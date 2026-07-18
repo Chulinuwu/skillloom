@@ -12,7 +12,8 @@ export async function initCommand(command: Extract<Command, { command: "init" }>
     mkdir(layout.promotions, { recursive: true }),
     mkdir(layout.operations, { recursive: true }),
     mkdir(layout.backups, { recursive: true }),
-    mkdir(layout.staging, { recursive: true })
+    mkdir(layout.staging, { recursive: true }),
+    mkdir(layout.learningEvents, { recursive: true })
   ]);
   await appendEvent(command.root, {
     operationId: `op-init-${Date.now()}`,

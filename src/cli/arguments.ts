@@ -1,10 +1,15 @@
 import type { Command, Scope, ScopedTargetName, TargetName } from "../domain/types.js";
 import { UsageError } from "../domain/errors.js";
+import { parseLearningArguments } from "./learning-arguments.js";
 
 export function parseArguments(argv: string[]): Command {
   const args = [...argv];
   const json = takeFlag(args, "--json");
   const command = args.shift();
+  const learningCommand = parseLearningArguments(command, args, { json });
+  if (learningCommand) {
+    return learningCommand;
+  }
   if (command === "init") {
     rejectUnknown(args);
     return { command, root: process.cwd(), json };
@@ -42,9 +47,16 @@ export function parseArguments(argv: string[]): Command {
     }
     const scopeValue = takeValue(args, "--scope");
     const yes = takeFlag(args, "--yes");
+    const policy = takeFlag(args, "--policy");
     const acceptWarnings = takeFlag(args, "--accept-warnings");
     const destinationRoot = takeValue(args, "--destination");
     rejectUnknown(args);
+    if (yes && policy) {
+      throw new UsageError("promote accepts either --yes or --policy, not both");
+    }
+    if (policy && acceptWarnings) {
+      throw new UsageError("--accept-warnings cannot be combined with --policy");
+    }
     if (targets.includes("generic")) {
       if (targets.length !== 1) {
         throw new UsageError("generic target cannot be combined with other targets");
@@ -55,7 +67,7 @@ export function parseArguments(argv: string[]): Command {
       if (scopeValue) {
         throw new UsageError("generic target does not accept --scope");
       }
-      return { command, targetMode: "directory", candidateId, targets: ["generic"], destinationRoot, yes, acceptWarnings, json };
+      return { command, targetMode: "directory", candidateId, targets: ["generic"], destinationRoot, yes, acceptWarnings, ...(policy ? { policy } : {}), json };
     }
     if (destinationRoot) {
       throw new UsageError("--destination is only valid for the generic target");
@@ -68,6 +80,7 @@ export function parseArguments(argv: string[]): Command {
       scope: parseScope(scopeValue ?? "project"),
       yes,
       acceptWarnings,
+      ...(policy ? { policy } : {}),
       json
     };
   }

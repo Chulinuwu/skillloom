@@ -5,6 +5,8 @@ import { listCandidates } from "../store/candidates.js";
 import { inspectJournal, readJournalLockDiagnostic } from "../store/journal.js";
 import { listOperations } from "../store/operations.js";
 import { listPromotions } from "../store/promotions.js";
+import { readConfig } from "../config/service.js";
+import { listLearningEvents } from "../store/learning.js";
 
 export async function statusCommand(_command: Extract<Command, { command: "status" }>, projectRoot = process.cwd()) {
   const operations = (await listOperations(projectRoot)).filter((operation) => operation.status !== "completed");
@@ -22,6 +24,8 @@ export async function statusCommand(_command: Extract<Command, { command: "statu
     ? recovery.find((item) => item.operationId === lock.operationId)?.recoveryCommand
     : null;
   return {
+    mode: (await readConfig(projectRoot))?.mode ?? "manual",
+    learning: await listLearningEvents(projectRoot),
     candidates: await listCandidates(projectRoot),
     promotions: await listPromotions(projectRoot),
     events: journal.events,

@@ -7,14 +7,15 @@ import { observeMutation, type MutationObservation } from "../operations/mutatio
 import type { PromotionCheckpointTarget, PromotionOperation } from "../operations/types.js";
 import { readEvents } from "../store/journal.js";
 import { storeLayout } from "../store/layout.js";
-import { verifyPromotionCandidate } from "./_policy.js";
+import { assertPromotionFindings, verifyPromotionCandidate } from "./_policy.js";
 import { assertSafeDestinations } from "./_targets.js";
 import { assertResumeBaseState } from "./_base-policy.js";
 import { hashSkillDirectory, pathExists } from "./files.js";
 import type { PromotionTarget, ResolvedPromotionTarget } from "./types.js";
 
 export async function verifyResumeCheckpoint(root: string, checkpoint: PromotionOperation): Promise<PromotionOperation> {
-  const { validation, candidate } = await verifyPromotionCandidate(root, checkpoint.candidateId, true);
+  const { validation, candidate } = await verifyPromotionCandidate(root, checkpoint.candidateId);
+  assertPromotionFindings(validation.findings, true);
   if (validation.packageHash !== checkpoint.candidateHash) {
     throw new ValidationError("Resume candidate hash mismatch");
   }

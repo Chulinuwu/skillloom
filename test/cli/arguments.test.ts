@@ -69,6 +69,19 @@ test("parses a multi-target promotion", () => {
     json: false
   });
 });
+test("parses learning modes and policy approval", () => {
+  assert.deepEqual(parseArguments(["mode", "hermes", "--json"]), { command: "mode", mode: "hermes", json: true });
+  assert.deepEqual(parseArguments(["journey"]), { command: "journey", json: false });
+  assert.deepEqual(parseArguments(["observe", "--source", "codex", "--outcome", "no-op", "--summary", "nothing reusable"]), {
+    command: "observe", source: "codex", outcome: "no-op", summary: "nothing reusable", json: false
+  });
+  assert.deepEqual(parseArguments(["promote", "cand-1", "--target", "codex", "--policy"]), {
+    command: "promote", targetMode: "scoped", candidateId: "cand-1", targets: ["codex"], scope: "project",
+    yes: false, acceptWarnings: false, policy: true, json: false
+  });
+  assert.throws(() => parseArguments(["promote", "cand-1", "--target", "codex", "--yes", "--policy"]), /either --yes or --policy/u);
+  assert.throws(() => parseArguments(["promote", "cand-1", "--target", "codex", "--policy", "--accept-warnings"]), /cannot be combined/u);
+});
 test("requires a promotion target", () => {
   assert.throws(() => parseArguments(["promote", "cand-1", "--yes"]), /target/);
 });

@@ -17,7 +17,7 @@ export async function promoteCommand(
     { projectRoot, homeDir },
     command.candidateId,
     targets,
-    { yes: command.yes, acceptWarnings: command.acceptWarnings }
+    command.policy ? { kind: "policy" } : { yes: command.yes, acceptWarnings: command.acceptWarnings }
   );
   if (result.result === "compensated") {
     throw new PromotionTransactionError(`Promotion ${result.promotionId} was compensated: ${result.error}`);

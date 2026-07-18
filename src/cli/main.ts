@@ -13,6 +13,9 @@ import { doctorCommand } from "../commands/doctor.js";
 import { resumeCommand } from "../commands/resume.js";
 import { rollbackCommand } from "../commands/rollback.js";
 import { recoverLockCommand } from "../commands/recover-lock.js";
+import { modeCommand } from "../commands/mode.js";
+import { observeCommand } from "../commands/observe.js";
+import { journeyCommand } from "../commands/journey.js";
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   try {
@@ -52,6 +55,15 @@ async function run(command: ReturnType<typeof parseArguments>) {
   }
   if (command.command === "recover-lock") {
     return await recoverLockCommand(command);
+  }
+  if (command.command === "mode") {
+    return await modeCommand(command);
+  }
+  if (command.command === "observe") {
+    return await observeCommand(command);
+  }
+  if (command.command === "journey") {
+    return await journeyCommand(command);
   }
   return await statusCommand(command);
 }

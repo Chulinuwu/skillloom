@@ -1,7 +1,7 @@
 {
   "name": "skillloom",
-  "description": "A local-first lifecycle for capturing, validating, promoting, and rolling back portable Agent Skills.",
-  "version": "0.1.0",
+  "description": "Policy-gated self-learning for portable Agent Skills across Claude Code and Codex.",
+  "version": "0.2.0",
   "author": {
     "name": "Chulinuwu",
     "url": "https://github.com/Chulinuwu"
@@ -14,6 +14,7 @@
     "skills",
     "validation",
     "promotion",
-    "rollback"
+    "rollback",
+    "self-learning"
   ]
 }

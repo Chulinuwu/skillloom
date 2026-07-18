@@ -7,12 +7,18 @@ export function formatOutput(value: unknown, json: boolean): string {
   if (isCandidate(value)) {
     return `${value.candidateId} ${value.state} ${value.metadata.name}\n`;
   }
+  if (isConfig(value)) {
+    return `mode: ${value.mode}\n`;
+  }
+  if (isLearningEvent(value)) {
+    return `${value.eventId} ${value.outcome}\n`;
+  }
   if (isStatus(value)) {
     const operations = value.operations.map((operation) =>
       `operation ${operation.operationId}: ${operation.phase} (${operation.status}) action: ${operation.recoveryAction}`
     );
     const lock = value.lock.state === "unlocked" ? "lock: unlocked" : `lock: ${value.lock.state} action: ${value.lock.action}`;
-    return [`candidates: ${value.candidates.length}`, `promotions: ${value.promotions.length}`, `events: ${value.events.length}`, ...operations, lock, ""].join("\n");
+    return [`mode: ${value.mode}`, `learning: ${value.learning.length}`, `candidates: ${value.candidates.length}`, `promotions: ${value.promotions.length}`, `events: ${value.events.length}`, ...operations, lock, ""].join("\n");
   }
   if (isPromotion(value)) {
     return `${value.promotionId} ${value.result} ${value.targets.length} target(s)\n`;
@@ -40,6 +46,12 @@ export function formatOutput(value: unknown, json: boolean): string {
   }
   return `${JSON.stringify(value)}\n`;
 }
+function isConfig(value: unknown): value is { mode: string } {
+  return typeof value === "object" && value !== null && "mode" in value && typeof value.mode === "string" && "policy" in value;
+}
+function isLearningEvent(value: unknown): value is { eventId: string; outcome: string } {
+  return typeof value === "object" && value !== null && "eventId" in value && typeof value.eventId === "string" && "outcome" in value && typeof value.outcome === "string";
+}
 
 function isCandidate(value: unknown): value is { candidateId: string; state: string; metadata: { name: string } } {
   return typeof value === "object" && value !== null && "candidateId" in value;
@@ -48,11 +60,13 @@ function isCandidate(value: unknown): value is { candidateId: string; state: str
 function isStatus(value: unknown): value is {
   candidates: unknown[];
   promotions: unknown[];
+  learning: unknown[];
+  mode: string;
   events: unknown[];
   operations: { operationId: string; phase: string; status: string; recoveryAction: string }[];
   lock: { state: string; action?: string };
 } {
-  return typeof value === "object" && value !== null && "candidates" in value && "promotions" in value && "events" in value && "operations" in value && "lock" in value;
+  return typeof value === "object" && value !== null && "candidates" in value && "promotions" in value && "learning" in value && "mode" in value && "events" in value && "operations" in value && "lock" in value;
 }
 function isPromotion(value: unknown): value is { promotionId: string; result: string; targets: unknown[] } {
   return typeof value === "object" && value !== null && "promotionId" in value && "targets" in value;

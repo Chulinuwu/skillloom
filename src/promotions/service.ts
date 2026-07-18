@@ -10,12 +10,13 @@ import { appendEvent } from "../store/journal.js";
 import { storeLayout } from "../store/layout.js";
 import { writeOperation } from "../store/operations.js";
 import { commitPromotionTargets } from "./_commit.js";
-import { verifyPromotionCandidate } from "./_policy.js";
+import { assertPromotionFindings, verifyPromotionCandidate } from "./_policy.js";
 import { backupPromotionTargets, cleanupPreparation, stagePromotionTargets } from "./_prepare.js";
 import { assertSafeDestinations, resolvePromotionTargets } from "./_targets.js";
 import { assertBaseState } from "./_base-policy.js";
 import { errorMessage, failPromotionCheckpoint, recordPromotionFailure } from "./_promotion-failure.js";
 import type { PromotionApproval, PromotionContext, PromotionHooks, PromotionTarget } from "./types.js";
+import { evaluateAutoPromotion } from "../policy/evaluate.js";
 
 export async function promoteCandidate(
   context: PromotionContext,
@@ -24,19 +25,43 @@ export async function promoteCandidate(
   approval: PromotionApproval,
   hooks: PromotionHooks = {}
 ): Promise<PromotionRecord> {
-  if (!approval.yes) {
+  const policyApproval = approval.kind === "policy";
+  if (!policyApproval && !approval.yes) {
     throw new PromotionPolicyError("Promotion requires explicit approval with --yes");
   }
   if (targets.length === 0) {
     throw new PromotionPolicyError("Promotion requires at least one target");
   }
-  const { canonical, validation, candidate } = await verifyPromotionCandidate(context.projectRoot, candidateId, approval.acceptWarnings);
+  const config = await ensureConfig(context.projectRoot);
+  const { canonical, validation, candidate } = await verifyPromotionCandidate(context.projectRoot, candidateId);
+  if (policyApproval) {
+    const decision = evaluateAutoPromotion(config, {
+      candidateId,
+      packageHash: validation.packageHash,
+      targets: targets.map((target) => target.adapter.name),
+      scopes: targets.map((target) => "scope" in target ? target.scope : "explicit"),
+      files: validation.files,
+      warnings: validation.findings.filter((finding) => finding.severity === "warning").length,
+      dangers: validation.findings.filter((finding) => finding.severity === "danger").length
+    });
+    await appendEvent(context.projectRoot, {
+      operationId: `op-policy-${randomUUID()}`,
+      kind: "policy",
+      phase: decision.approved ? "completed" : "failed",
+      evidence: decision,
+      ...(decision.approved ? {} : { error: decision.reasons.join("; ") })
+    });
+    if (!decision.approved) {
+      throw new PromotionPolicyError(`Automatic promotion quarantined: ${decision.reasons.join("; ")}`);
+    }
+  } else {
+    assertPromotionFindings(validation.findings, approval.acceptWarnings);
+  }
   const operationId = `op-promote-${randomUUID()}`;
   const promotionId = `promo-${randomUUID()}`;
   const resolvedTargets = await resolvePromotionTargets(context, validation.metadata.name, targets, promotionId);
   const canonicalStoreRoot = await canonicalizeFuturePath(storeLayout(context.projectRoot).root);
   assertSafeDestinations(canonicalStoreRoot, resolvedTargets);
-  await ensureConfig(context.projectRoot);
   return await withStoreLock(context.projectRoot, async () => {
     const base = candidate.base ?? { kind: "none" } satisfies CandidateBase;
     await assertBaseState(base, resolvedTargets.map((target) => target.destination));

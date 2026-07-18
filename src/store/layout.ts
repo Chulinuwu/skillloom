@@ -7,6 +7,8 @@ export function storeLayout(projectRoot: string) {
     root,
     config: join(root, CONFIG_FILE),
     events: join(root, EVENTS_FILE),
+    learning: join(root, "learning"),
+    learningEvents: join(root, "learning", "events"),
     candidates: join(root, CANDIDATES_DIR),
     promotions: join(root, PROMOTIONS_DIR),
     operations: join(root, OPERATIONS_DIR),

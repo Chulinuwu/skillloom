@@ -1,4 +1,14 @@
 export const STORE_VERSION = 1;
+export const DEFAULT_MODE = "manual" as const;
+export const DEFAULT_POLICY = {
+  targets: ["claude", "codex"] as const,
+  scope: "project" as const,
+  maxFiles: 20,
+  maxTotalBytes: 256 * 1024,
+  allowWarnings: false,
+  allowExecutables: false
+};
+export const DEFAULT_HERMES = { minToolCalls: 3 };
 export const STORE_DIR = ".skillloom";
 export const CONFIG_FILE = "config.json";
 export const EVENTS_FILE = "events.jsonl";

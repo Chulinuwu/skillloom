@@ -25,12 +25,12 @@ test("SessionStart emits a safe static context when skill metadata is unavailabl
     const output = JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } };
     assert.equal(stderr, "");
     assert.match(output.hookSpecificOutput.additionalContext, /\$capture-learning/u);
-    assert.match(output.hookSpecificOutput.additionalContext, /Never promote autonomously\./u);
+    assert.match(output.hookSpecificOutput.additionalContext, /manual mode/u);
   } finally {
     await rm(missingRoot, { recursive: true, force: true });
   }
 });
-test("npm package contains the CLI and both portable skills", async () => {
+test("npm package contains the CLI and all portable skills", async () => {
   const { stdout, stderr } = await execute("npm", ["pack", "--json", "--dry-run", "--ignore-scripts"], {
     cwd: root,
     maxBuffer: 2 * 1024 * 1024
@@ -40,6 +40,8 @@ test("npm package contains the CLI and both portable skills", async () => {
   const paths = new Set(pack.files.map((file) => file.path));
   for (const path of [
     "dist/cli/main.js",
+    "skills/autonomous-learning/SKILL.md",
+    "skills/autonomous-learning/agents/openai.yaml",
     "skills/capture-learning/SKILL.md",
     "skills/capture-learning/agents/openai.yaml",
     "skills/curate-skills/SKILL.md",

@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 const execute = promisify(execFile);
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const repository = "https://github.com/Chulinuwu/skillloom";
-const skillNames = ["capture-learning", "curate-skills"];
+const skillNames = ["autonomous-learning", "capture-learning", "curate-skills"];
 
 function invariant(condition, message) {
   if (!condition) {
@@ -58,7 +58,7 @@ async function validateManifests() {
   const codexMarketplace = await json(".agents/plugins/marketplace.json");
   const version = packageJson.version;
 
-  invariant(version === "0.1.0", "package version must be 0.1.0");
+  invariant(version === "0.2.0", "package version must be 0.2.0");
   invariant(packageLock.version === version && packageLock.packages?.[""]?.version === version, "package-lock version must match package.json");
   invariant(claude.version === version && codex.version === version, "plugin versions must match package.json");
   invariant(claudeMarketplace.plugins?.[0]?.version === version, "Claude marketplace version must match package.json");
@@ -79,6 +79,7 @@ async function validateManifests() {
   }
   invariant(codex.interface.defaultPrompt.some((prompt) => prompt.includes("$capture-learning")), "Codex prompts must mention $capture-learning");
   invariant(codex.interface.defaultPrompt.some((prompt) => prompt.includes("$curate-skills")), "Codex prompts must mention $curate-skills");
+  invariant(codex.interface.defaultPrompt.some((prompt) => prompt.includes("$autonomous-learning")), "Codex prompts must mention $autonomous-learning");
 }
 
 async function validateSkills() {
@@ -86,7 +87,7 @@ async function validateSkills() {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
-  invariant(JSON.stringify(directories) === JSON.stringify(skillNames), "Claude and Codex must discover the same two skill directories");
+  invariant(JSON.stringify(directories) === JSON.stringify(skillNames), "Claude and Codex must discover the same three skill directories");
 
   for (const name of skillNames) {
     const source = await readFile(join(root, "skills", name, "SKILL.md"), "utf8");
@@ -96,18 +97,27 @@ async function validateSkills() {
     invariant((metadata.get("description")?.length ?? 0) >= 120, `${name} needs a trigger-rich description`);
     invariant(openai.includes(`$${name}`), `${name} default prompt must explicitly mention the skill`);
     invariant(/validat/iu.test(source) && /scan|finding/iu.test(source), `${name} must require validation and scan evidence`);
-    invariant(/approval/iu.test(source) && /promot/iu.test(source), `${name} must require explicit promotion approval`);
     invariant(/rollback/iu.test(source) && /evidence|hash/iu.test(source), `${name} must preserve rollback evidence`);
-    invariant(/never promote autonomously/iu.test(source), `${name} must prohibit autonomous promotion`);
-    invariant(!/Claude Code|Codex|MCP tool|computer use/iu.test(source), `${name} must remain harness-neutral`);
+    if (name === "autonomous-learning") {
+      invariant(/policy/iu.test(source) && /quarantin/iu.test(source) && /observe/iu.test(source), `${name} must enforce policy-gated learning evidence`);
+    } else {
+      invariant(/approval/iu.test(source) && /promot/iu.test(source), `${name} must require explicit promotion approval`);
+      invariant(/never promote autonomously/iu.test(source), `${name} must prohibit autonomous promotion`);
+      invariant(!/Claude Code|Codex|MCP tool|computer use/iu.test(source), `${name} must remain harness-neutral`);
+    }
   }
 }
 
 async function validateHook() {
   const source = await readFile(join(root, "hooks", "session-start.mjs"), "utf8");
+  const stop = await readFile(join(root, "hooks", "stop.mjs"), "utf8");
+  const hookConfig = await readFile(join(root, "hooks", "hooks.json"), "utf8");
   const forbidden = [/fetch\s*\(/u, /https?:\/\//u, /writeFile|appendFile|rename|unlink|\brm\b/u, /execFile|spawn/u];
   invariant(source.includes("readFile(skillPath"), "SessionStart must read capture metadata locally");
   invariant(forbidden.every((pattern) => !pattern.test(source)), "SessionStart must not mutate files or use network/process adapters");
+  invariant(forbidden.every((pattern) => !pattern.test(stop)), "Stop must not mutate files or use network/process adapters");
+  invariant(hookConfig.includes('"SessionStart"') && hookConfig.includes('"Stop"'), "Plugin hooks must declare SessionStart and Stop");
+  invariant(stop.includes("stop_hook_active") && stop.includes("$autonomous-learning"), "Stop must prevent review loops and request autonomous-learning");
 
   const { stdout, stderr } = await execute(process.execPath, [join(root, "hooks", "session-start.mjs")], {
     env: { ...process.env, CLAUDE_PLUGIN_ROOT: root }
@@ -118,7 +128,7 @@ async function validateHook() {
   invariant(output.hookSpecificOutput?.hookEventName === "SessionStart", "SessionStart output must name its event");
   const context = output.hookSpecificOutput?.additionalContext;
   invariant(typeof context === "string" && context.length > 0 && context.length <= 500, "SessionStart additionalContext must be small");
-  invariant(context.includes("$capture-learning") && !context.includes("$curate-skills"), "SessionStart must point to capture-learning without dumping a catalog");
+  invariant(context.includes("$capture-learning") && context.includes("manual mode"), "SessionStart must default to a manual capture context");
 }
 
 async function validateFiles() {
@@ -129,6 +139,7 @@ async function validateFiles() {
     ".agents/plugins/marketplace.json",
     "hooks/hooks.json",
     "hooks/session-start.mjs",
+    "hooks/stop.mjs",
     "README.md",
     "LICENSE"
   ]) {

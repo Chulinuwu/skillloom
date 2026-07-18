@@ -1,112 +1,106 @@
 # Skillloom
 
-Skillloom is a local-first lifecycle for portable Agent Skills. It captures a focused skill package as an immutable candidate, validates and scans it, promotes identical content through filesystem adapters, and records enough evidence to resume or roll back safely.
+Skillloom adds policy-gated skill learning to Claude Code, Codex, and portable Agent Skills consumers. It adapts the useful self-improvement loop from Hermes Agent to plugin lifecycle hooks while leaving conversations, tools, model routing, and execution inside the host agent.
 
-Skillloom does not run an LLM, own agent conversations, operate a daemon, or promote skills automatically.
+The host agent reviews completed work, drafts a focused Agent Skill candidate, and asks Skillloom to validate and promote it. Skillloom owns the safety boundary: immutable snapshots, deterministic trust findings, policy decisions, transactional installation, crash recovery, quarantine evidence, and rollback.
 
-## Safety boundary
+## Modes
 
-Every candidate is structurally validated and scanned for deterministic risk patterns before promotion. Danger findings block promotion. Warning findings require both `--accept-warnings` and explicit promotion approval with `--yes`.
+| Mode | Post-task review | Promotion approval |
+| --- | --- | --- |
+| `manual` | Only when invoked | Explicit `--yes` from the user |
+| `policy` | Only when invoked | `--policy` after deterministic policy passes |
+| `hermes` | Stop hook requests `$autonomous-learning` after a non-trivial turn | Same deterministic policy as `policy` |
 
-This scan is a preflight guard, not a malware-proof sandbox. Review skill instructions and executable resources before approving them. Do not store credentials or full conversation transcripts as evidence.
-
-## Architecture and lifecycle
-
-The TypeScript CLI owns the domain workflow. `src/skills` validates Agent Skill packages, `src/security` produces trust findings, `src/store` records append-only events and immutable candidates, `src/promotions` stages transactional copies and backups, and `src/adapters` resolves native discovery paths.
-
-The lifecycle is:
-
-1. Draft one harness-neutral skill package in a temporary directory.
-2. Capture it with concise provenance.
-3. Validate structure, references, hashes, and trust findings.
-4. Review the candidate and choose destinations.
-5. Promote only with explicit approval.
-6. Verify destination hashes and reload the target harness.
-7. Resume an interrupted transaction when recorded staging evidence agrees, or roll back from its promotion record.
-
-Runtime state lives under `.skillloom/`: configuration, immutable candidates, append-only events, promotions, backups, staging data, and the mutation lock. Active destinations are not written before validation and scanning pass.
-
-## Standalone CLI
-
-Install the published package globally or run it through npm:
-
-```bash
-npm install --global skillloom
-npx skillloom status
-```
-
-Initialize and capture a new candidate:
+New stores default to `manual`. Existing v0.1 stores also load as `manual` without a destructive migration.
 
 ```bash
 skillloom init
-skillloom capture ./draft-skill --created-by agent --evidence task:123 --json
-skillloom validate 20260717T120000Z-example123 --json
+skillloom mode hermes
+skillloom mode --json
 ```
 
-Capture an improvement with concurrent-edit protection:
+The default automatic policy permits only project-scoped Claude Code and Codex destinations, at most 20 files and 256 KiB, with no warnings, danger findings, or executable files. Generic directories and user scope require manual approval. Edit `.skillloom/config.json` only when deliberately changing that trust boundary.
+
+## Hermes-style learning loop
+
+In `hermes` mode, the plugin Stop hook checks the completed turn cadence. When review is due, it asks the host agent to use `$autonomous-learning` once. The hook honors `stop_hook_active`, so the review cannot create an infinite stop loop.
+
+The agent produces one bounded decision:
+
+- `no-op`: nothing reusable was learned
+- `memory`: a declarative journey entry, not injected harness memory
+- `skill-create`: a new procedural skill candidate
+- `skill-patch`: an update based on an installed skill hash
+
+Learning records contain a short summary and identifiers. Skillloom does not persist full transcripts, credentials, or model context.
 
 ```bash
-skillloom capture ./revised-skill \
+skillloom observe \
+  --source codex \
+  --outcome no-op \
+  --summary "The completed task did not reveal a reusable procedure"
+
+skillloom journey --json
+```
+
+For reusable work, the host agent follows the same candidate lifecycle in every mode:
+
+```bash
+skillloom capture ./draft-skill \
   --created-by agent \
-  --base ./.agents/skills/example \
-  --evidence issue:456
+  --evidence task:123 \
+  --json
+
+skillloom validate cand-20260718120000-example --json
 ```
 
-Promote to native project discovery paths only after review:
+Manual promotion:
 
 ```bash
-skillloom promote 20260717T120000Z-example123 \
-  --target claude,codex,agents \
+skillloom promote cand-20260718120000-example \
+  --target claude,codex \
   --scope project \
   --yes
 ```
 
-Warnings require a separate acknowledgement:
+Policy-gated promotion:
 
 ```bash
-skillloom promote 20260717T120000Z-example123 \
-  --target codex \
-  --scope user \
-  --yes \
-  --accept-warnings
+skillloom promote cand-20260718120000-example \
+  --target claude,codex \
+  --scope project \
+  --policy
 ```
 
-Use an explicit directory for the generic adapter:
+Do not combine `--policy` with `--yes`. Warning acceptance is manual only. A failed automatic decision is recorded and the candidate remains available for review instead of being deleted or installed.
 
-```bash
-skillloom promote 20260717T120000Z-example123 \
-  --target generic \
-  --destination /absolute/path/to/skills \
-  --yes
-```
+## Recovery and rollback
 
-Inspect and recover durable operations:
+Promotion uses staging, durable checkpoints, backups, destination hash verification, and compensation across multiple targets. A long-running operation can be inspected and resumed after interruption.
 
 ```bash
 skillloom status --json
-skillloom resume op-20260717-example --yes
-skillloom rollback promotion-20260717-example --yes
+skillloom resume op-example --yes
+skillloom rollback promo-example --yes
 skillloom recover-lock journal --yes
 ```
 
-`resume` verifies recorded staged hashes before continuing. `rollback` verifies the active installed hash before restoring a backup. Use `rollback ... --force` only after reviewing a conflict where newer installed content would otherwise be protected. `recover-lock journal --yes` archives a confirmed stale journal lock; it does not silently discard lock evidence.
+`resume` verifies recorded staged hashes before continuing. `rollback` protects newer installed content unless `--force` is explicitly supplied after reviewing the conflict.
 
-## Discovery and install paths
+## Plugin installation
 
-Skillloom ships one canonical `skills/` tree for every harness:
+Clone the repository and build the CLI first:
 
-| Target | Project destination | User destination |
-| --- | --- | --- |
-| Claude Code adapter | `<project>/.claude/skills/<skill-name>` | `~/.claude/skills/<skill-name>` |
-| Codex adapter | `<project>/.agents/skills/<skill-name>` | `~/.agents/skills/<skill-name>` |
-| Agents adapter | `<project>/.agents/skills/<skill-name>` | `~/.agents/skills/<skill-name>` |
-| Generic adapter | `<destination>/<skill-name>` | `<destination>/<skill-name>` |
+```bash
+npm ci
+npm run build
+npm link
+```
 
-Claude Code discovers `.claude-plugin/plugin.json`, root `skills/`, and `hooks/hooks.json`. Codex discovers `.codex-plugin/plugin.json` and root `skills/`; its development catalog is `.agents/plugins/marketplace.json`. Generic Agent Skills consumers can copy either skill directory directly to their supported skills path.
+`npm link` exposes the local `skillloom` binary used by the bundled skills. When a published v0.2 package is available, `npm install --global skillloom@0.2` is the equivalent CLI installation.
 
-### Claude Code local development install
-
-From the repository root:
+Install for Claude Code from the repository root:
 
 ```bash
 claude plugin marketplace add .
@@ -114,11 +108,7 @@ claude plugin install skillloom@skillloom-dev --scope local
 claude plugin details skillloom@skillloom-dev
 ```
 
-Claude Code records the local marketplace from `.claude-plugin/marketplace.json`. Start a new session after installation or update so the skills and SessionStart hook are reloaded.
-
-### Codex local development install
-
-From the repository root:
+Install for Codex from the repository root:
 
 ```bash
 codex plugin marketplace add .
@@ -126,22 +116,28 @@ codex plugin add skillloom@skillloom-dev
 codex plugin list
 ```
 
-Codex reads `.agents/plugins/marketplace.json` and `.codex-plugin/plugin.json`. Start a new task after installation or update so Codex reloads the skills. The Codex manifest deliberately omits Claude hooks because the current Codex plugin schema does not accept that field.
+Both harnesses discover the same root `skills/` tree and `hooks/hooks.json`. Lifecycle hooks run only after the harness trusts the plugin. Start a new session or task after installation, update, or mode changes that affect startup context.
 
-### Direct Agent Skills install
+The canonical adapters install skills to:
 
-Without a plugin marketplace, copy the canonical skill directories to the consumer's Agent Skills path:
+| Target | Project destination | User destination |
+| --- | --- | --- |
+| Claude Code | `<project>/.claude/skills/<skill-name>` | `~/.claude/skills/<skill-name>` |
+| Codex | `<project>/.agents/skills/<skill-name>` | `~/.agents/skills/<skill-name>` |
+| Agents | `<project>/.agents/skills/<skill-name>` | `~/.agents/skills/<skill-name>` |
+| Generic | `<destination>/<skill-name>` | `<destination>/<skill-name>` |
 
-```bash
-mkdir -p .agents/skills
-cp -R skills/capture-learning skills/curate-skills .agents/skills/
-```
+## Security boundary
 
-Start a new session in the consuming harness after copying or updating skills.
+Skillloom does not embed an LLM, replace the host agent runtime, operate a daemon, or claim that deterministic scanning proves behavioral quality. The host agent still decides what procedure to draft. Automatic approval only proves that the immutable candidate satisfies the configured structural and trust policy.
 
-## Development and verification
+Danger findings always block promotion. Manual warning overrides require both `--accept-warnings` and `--yes`. Executable resources are denied by the default automatic policy even when the package declares them.
 
-Requirements: Node.js 20 or newer, npm, and the Claude Code or Codex CLI only when validating those plugin formats.
+Runtime state lives under `.skillloom/`: configuration, immutable candidates, learning events, the append-only journal, promotions, operations, backups, staging data, and locks.
+
+## Development
+
+Requirements are Node.js 20 or newer and npm. Claude Code and Codex CLIs are only required for their official plugin validators.
 
 ```bash
 npm ci
@@ -153,13 +149,10 @@ npm run validate:plugin
 npm pack
 ```
 
-Additional manifest checks used by maintainers:
+Validate the plugin skills directly when changing their instructions:
 
 ```bash
-claude plugin validate .
-python3 /path/to/plugin-creator/scripts/validate_plugin.py .
+python3 /path/to/skill-creator/scripts/quick_validate.py skills/autonomous-learning
 python3 /path/to/skill-creator/scripts/quick_validate.py skills/capture-learning
 python3 /path/to/skill-creator/scripts/quick_validate.py skills/curate-skills
 ```
-
-The npm package allowlist contains `dist`, `skills`, `README.md`, and `LICENSE`. The `skillloom` binary resolves to `dist/cli/main.js`.

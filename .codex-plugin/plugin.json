@@ -1,7 +1,7 @@
 {
   "name": "skillloom",
-  "version": "0.1.0",
-  "description": "A local-first lifecycle for capturing, validating, promoting, and rolling back portable Agent Skills.",
+  "version": "0.2.0",
+  "description": "Policy-gated self-learning for portable Agent Skills across Claude Code and Codex.",
   "author": {
     "name": "Chulinuwu",
     "url": "https://github.com/Chulinuwu"
@@ -14,13 +14,14 @@
     "skills",
     "validation",
     "promotion",
-    "rollback"
+    "rollback",
+    "self-learning"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Skillloom",
-    "shortDescription": "Safe lifecycle management for portable Agent Skills",
-    "longDescription": "Capture reusable task evidence as Agent Skill candidates, validate and scan them locally, then promote or roll them back with explicit approval and durable evidence.",
+    "shortDescription": "Policy-gated self-learning for portable Agent Skills",
+    "longDescription": "Capture reusable task evidence, validate immutable candidates, and choose manual, policy, or Hermes-style learning with quarantine and rollback evidence.",
     "developerName": "Chulinuwu",
     "category": "Developer Tools",
     "capabilities": [
@@ -30,7 +31,8 @@
     ],
     "defaultPrompt": [
       "Use $capture-learning to preserve this reusable workflow safely.",
-      "Use $curate-skills to review a managed skill before changing it."
+      "Use $curate-skills to review a managed skill before changing it.",
+      "Use $autonomous-learning when Skillloom requests a post-task review."
     ],
     "websiteURL": "https://github.com/Chulinuwu/skillloom"
   }

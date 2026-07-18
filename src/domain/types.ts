@@ -4,11 +4,13 @@ export type RuntimeTargetName = "claude" | "codex";
 export type TargetName = ScopedTargetName | "generic";
 export type Scope = "project" | "user";
 export type TargetScope = Scope | "explicit";
+export type SkillloomMode = "manual" | "policy" | "hermes";
 type PromoteCommandBase = {
   command: "promote";
   candidateId: string;
   yes: boolean;
   acceptWarnings: boolean;
+  policy?: boolean;
 };
 type ScopedPromoteCommand = PromoteCommandBase & {
   targetMode: "scoped";
@@ -39,6 +41,9 @@ export type Command =
   | ({ command: "resume"; operationId: string; yes: boolean } & JsonOutput)
   | ({ command: "rollback"; promotionId: string; yes: boolean; force: boolean } & JsonOutput)
   | ({ command: "status" } & JsonOutput)
+  | ({ command: "mode"; mode?: SkillloomMode } & JsonOutput)
+  | ({ command: "observe"; source: "claude" | "codex" | "agents"; outcome: "no-op" | "memory" | "skill-create" | "skill-patch"; summary: string; candidateId?: string } & JsonOutput)
+  | ({ command: "journey" } & JsonOutput)
   | ({ command: "recover-lock"; lock: "journal"; yes: boolean } & JsonOutput)
   | ((ScopedDoctorCommand | GenericDoctorCommand) & JsonOutput);
 export type AdapterContext = {
@@ -169,7 +174,7 @@ export type JournalEvent = {
   sequence: number;
   timestamp: string;
   operationId: string;
-  kind: "init" | "capture" | "validate" | "promote" | "resume" | "rollback" | "status" | "recovery";
+  kind: "init" | "capture" | "validate" | "promote" | "resume" | "rollback" | "status" | "recovery" | "policy" | "learn";
   phase: OperationPhase;
   evidence?: unknown;
   error?: string;

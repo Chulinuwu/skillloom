@@ -1,7 +1,7 @@
 {
   "name": "skillloom",
-  "version": "0.1.0",
-  "description": "Local-first lifecycle management for portable Agent Skills",
+  "version": "0.2.0",
+  "description": "Policy-gated self-learning for portable Agent Skills",
   "type": "module",
   "license": "MIT",
   "author": "Chulinuwu",
@@ -15,7 +15,8 @@
     "skills",
     "claude-code",
     "codex",
-    "rollback"
+    "rollback",
+    "self-learning"
   ],
   "bin": {
     "skillloom": "./dist/cli/main.js"
@@ -32,7 +33,7 @@
     "prepack": "npm run build",
     "pretest": "npm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test --import tsx test/*.test.ts test/adapters/*.test.ts test/cli/*.test.ts test/commands/*.test.ts test/files/*.test.ts test/packaging/*.test.ts test/promotions/*.test.ts test/security/*.test.ts test/skills/*.test.ts",
+    "test": "node --test --import tsx test/*.test.ts test/adapters/*.test.ts test/cli/*.test.ts test/commands/*.test.ts test/config/*.test.ts test/files/*.test.ts test/hooks/*.test.ts test/packaging/*.test.ts test/policy/*.test.ts test/promotions/*.test.ts test/security/*.test.ts test/skills/*.test.ts",
     "validate:plugin": "node scripts/validate-plugin.mjs"
   },
   "devDependencies": {

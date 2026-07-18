@@ -2,10 +2,9 @@ import type { AdapterContext, Scope, TargetScope } from "../domain/types.js";
 import type { GenericDirectoryAdapter, ScopedHarnessAdapter } from "../adapters/types.js";
 import type { PromotionOperation } from "../operations/types.js";
 
-export type PromotionApproval = {
-  yes: boolean;
-  acceptWarnings: boolean;
-};
+export type PromotionApproval =
+  | { kind?: "explicit"; yes: boolean; acceptWarnings: boolean }
+  | { kind: "policy" };
 
 export type PromotionContext = AdapterContext;
 
