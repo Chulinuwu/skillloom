@@ -1,0 +1,15 @@
+export const STORE_VERSION = 1;
+export const STORE_DIR = ".skillloom";
+export const CONFIG_FILE = "config.json";
+export const EVENTS_FILE = "events.jsonl";
+export const CANDIDATES_DIR = "candidates";
+export const PROMOTIONS_DIR = "promotions";
+export const OPERATIONS_DIR = "operations";
+export const BACKUPS_DIR = "backups";
+export const STAGING_DIR = "staging";
+export const LOCK_DIR = "lock";
+export const JOURNAL_LOCK_DIR = "journal.lock";
+export const MAX_FILE_BYTES = 512 * 1024;
+export const MAX_TOTAL_BYTES = 2 * 1024 * 1024;
+export const MAX_EVIDENCE_ITEMS = 8;
+export const MAX_EVIDENCE_LENGTH = 160;

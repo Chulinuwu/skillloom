@@ -1,0 +1,19 @@
+{
+  "name": "skillloom",
+  "description": "A local-first lifecycle for capturing, validating, promoting, and rolling back portable Agent Skills.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Chulinuwu",
+    "url": "https://github.com/Chulinuwu"
+  },
+  "homepage": "https://github.com/Chulinuwu/skillloom",
+  "repository": "https://github.com/Chulinuwu/skillloom",
+  "license": "MIT",
+  "keywords": [
+    "agent-skills",
+    "skills",
+    "validation",
+    "promotion",
+    "rollback"
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "createdAt": "2026-07-17T06:57:03.558Z",
+  "updatedAt": "2026-07-18T03:34:25.322Z",
+  "briefPath": ".omx/ultragoal/brief.md",
+  "goalsPath": ".omx/ultragoal/goals.json",
+  "ledgerPath": ".omx/ultragoal/ledger.jsonl",
+  "codexGoalMode": "aggregate",
+  "goals": [
+    {
+      "id": "G001-let-an-agent-turn-reusable-task-evid",
+      "title": "Let an agent turn reusable task evidence into an Agent Skills-compati...",
+      "objective": "Let an agent turn reusable task evidence into an Agent Skills-compatible candidate.",
+      "status": "complete",
+      "attempt": 1,
+      "createdAt": "2026-07-17T06:57:03.558Z",
+      "updatedAt": "2026-07-17T07:18:01.040Z",
+      "startedAt": "2026-07-17T06:57:12.984Z",
+      "completedAt": "2026-07-17T07:18:01.040Z",
+      "evidence": "Independent verifier PASS after npm ci, 20 tests, typecheck, build, CLI tamper smoke, create-once snapshot collision check, size guards, and 20-process journal concurrency check."
+    },
+    {
+      "id": "G002-keep-one-canonical-skill-package-and",
+      "title": "Keep one canonical skill package and publish it through harness adapt...",
+      "objective": "Keep one canonical skill package and publish it through harness adapters.",
+      "status": "complete",
+      "attempt": 1,
+      "createdAt": "2026-07-17T06:57:03.558Z",
+      "updatedAt": "2026-07-17T07:55:16.825Z",
+      "startedAt": "2026-07-17T07:18:06.771Z",
+      "completedAt": "2026-07-17T07:55:16.825Z",
+      "evidence": "Independent verifier PASS: fresh npm ci, 37 tests, typecheck, build, isolated-HOME CLI promotion, canonical byte-identical hashes, compensation and real backup failure smoke, durable cleanup evidence, parent-directory fsync."
+    },
+    {
+      "id": "G003-support-claude-code-and-codex-as-fir",
+      "title": "Support Claude Code and Codex as first-class targets.",
+      "objective": "Support Claude Code and Codex as first-class targets.",
+      "status": "complete",
+      "attempt": 1,
+      "createdAt": "2026-07-17T06:57:03.558Z",
+      "updatedAt": "2026-07-17T08:19:06.771Z",
+      "startedAt": "2026-07-17T07:55:25.635Z",
+      "completedAt": "2026-07-17T08:19:06.771Z",
+      "evidence": "Independent verifier PASS: fresh npm ci, 48 tests, typecheck, build, isolated Claude/Codex project+user promotion, canonical hash equality, read-only doctor runtime/path checks, structured warning/danger findings, no real HOME changes."
+    },
+    {
+      "id": "G004-support-other-agents-through-the-sta",
+      "title": "Support other agents through the standard `.agents/skills` target and...",
+      "objective": "Support other agents through the standard `.agents/skills` target and a generic directory adapter.",
+      "status": "complete",
+      "attempt": 1,
+      "createdAt": "2026-07-17T06:57:03.558Z",
+      "updatedAt": "2026-07-17T08:58:46.533Z",
+      "startedAt": "2026-07-17T08:19:10.885Z",
+      "completedAt": "2026-07-17T08:58:46.533Z",
+      "evidence": "Independent verifier PASS: fresh npm ci, 65 tests, typecheck, build, built CLI agents/generic smoke, canonical bytes, physical-path collision and broad-root pre-stage rejection, read-only doctor, no real HOME writes."
+    },
+    {
+      "id": "G005-make-every-mutation-inspectable-resu",
+      "title": "Make every mutation inspectable, resumable, atomic, and reversible.",
+      "objective": "Make every mutation inspectable, resumable, atomic, and reversible.",
+      "status": "complete",
+      "attempt": 1,
+      "createdAt": "2026-07-17T06:57:03.558Z",
+      "updatedAt": "2026-07-17T10:39:48.299Z",
+      "startedAt": "2026-07-17T08:58:52.243Z",
+      "completedAt": "2026-07-17T10:39:48.299Z",
+      "evidence": "Independent verifier PASS: fresh npm ci, 86 tests, typecheck, build, 56 mutation SIGKILL boundaries, promotion/rollback resume, base identity guard, journal corruption and stale-lock recovery subprocess matrix."
+    },
+    {
+      "id": "G006-keep-the-runtime-local-first-and-pro",
+      "title": "Keep the runtime local-first and provider-independent.",
+      "objective": "Keep the runtime local-first and provider-independent.",
+      "status": "complete",
+      "attempt": 1,
+      "createdAt": "2026-07-17T06:57:03.558Z",
+      "updatedAt": "2026-07-17T11:05:44.804Z",
+      "startedAt": "2026-07-17T10:40:09.399Z",
+      "completedAt": "2026-07-17T11:05:44.804Z",
+      "evidence": "Independent verifier PASS: fresh npm ci, lint, typecheck, build, 90 tests, empty production dependency closure, 71-file pack dry-run, restricted empty-PATH CLI lifecycle with no network/provider/child-process/real-HOME access."
+    },
+    {
+      "id": "G007-ship-as-an-installable-claude-code-a",
+      "title": "Ship as an installable Claude Code and Codex plugin plus a standalone...",
+      "objective": "Ship as an installable Claude Code and Codex plugin plus a standalone CLI.",
+      "status": "complete",
+      "attempt": 1,
+      "createdAt": "2026-07-17T06:57:03.558Z",
+      "updatedAt": "2026-07-18T03:34:25.322Z",
+      "startedAt": "2026-07-17T11:06:07.755Z",
+      "reviewBlockedAt": "2026-07-18T02:47:20.351Z",
+      "evidence": "Independent code-reviewer REQUEST CHANGES: HIGH missing referenced-file validation; HIGH undeclared executable detection absent; HIGH --base improvement resume fails after installed-rename crash; MEDIUM validate state not persisted.",
+      "reviewBlockerResolution": {
+        "resolverGoalId": "G008-resolve-final-code-review-blockers",
+        "status": "complete",
+        "resolvedAt": "2026-07-18T03:34:25.322Z",
+        "evidence": "G008 blockers resolved; post-cleaner 176 tests and official validators passed; code-reviewer APPROVE; architect CLEAR."
+      },
+      "completedAt": "2026-07-18T03:34:25.322Z"
+    },
+    {
+      "id": "G008-resolve-final-code-review-blockers",
+      "title": "Resolve final code-review blockers",
+      "objective": "Implement referenced-file validation, executable declaration enforcement, crash-safe improvement resume after durable install, and persisted validated candidate state; add regression and SIGKILL coverage; rerun final gates and independent reviews.",
+      "status": "complete",
+      "attempt": 1,
+      "createdAt": "2026-07-18T02:47:20.351Z",
+      "updatedAt": "2026-07-18T03:34:25.322Z",
+      "evidence": "G008 blockers resolved; post-cleaner 176 tests and official validators passed; code-reviewer APPROVE; architect CLEAR.",
+      "resolvesReviewBlockedGoalId": "G007-ship-as-an-installable-claude-code-a",
+      "startedAt": "2026-07-18T02:47:30.481Z",
+      "completedAt": "2026-07-18T03:34:25.322Z"
+    }
+  ],
+  "codexObjective": "Complete the durable ultragoal plan in .omx/ultragoal/goals.json, including later accepted/appended stories, under the original brief constraints; use .omx/ultragoal/ledger.jsonl as the audit trail.",
+  "aggregateCompletion": {
+    "status": "complete",
+    "completedAt": "2026-07-18T03:34:25.322Z",
+    "evidence": "G008 blockers resolved; post-cleaner 176 tests and official validators passed; code-reviewer APPROVE; architect CLEAR.",
+    "codexGoal": {
+      "available": true,
+      "objective": "Complete the durable ultragoal plan in .omx/ultragoal/goals.json, including later accepted/appended stories, under the original brief constraints; use .omx/ultragoal/ledger.jsonl as the audit trail.",
+      "status": "complete",
+      "remainingTokens": null,
+      "raw": {
+        "goal": {
+          "threadId": "019f6eb8-79c8-7ae0-8c65-7d1e1aa5862c",
+          "objective": "Complete the durable ultragoal plan in .omx/ultragoal/goals.json, including later accepted/appended stories, under the original brief constraints; use .omx/ultragoal/ledger.jsonl as the audit trail.",
+          "status": "complete",
+          "tokensUsed": 1107264,
+          "timeUsedSeconds": 20722,
+          "createdAt": 1784271440,
+          "updatedAt": 1784345495
+        },
+        "remainingTokens": null
+      }
+    }
+  }
+}

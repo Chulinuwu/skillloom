@@ -1,0 +1,20 @@
+{
+  "name": "skillloom-dev",
+  "interface": {
+    "displayName": "Skillloom Dev"
+  },
+  "plugins": [
+    {
+      "name": "skillloom",
+      "source": {
+        "source": "url",
+        "url": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

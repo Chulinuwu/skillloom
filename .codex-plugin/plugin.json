@@ -1,0 +1,37 @@
+{
+  "name": "skillloom",
+  "version": "0.1.0",
+  "description": "A local-first lifecycle for capturing, validating, promoting, and rolling back portable Agent Skills.",
+  "author": {
+    "name": "Chulinuwu",
+    "url": "https://github.com/Chulinuwu"
+  },
+  "homepage": "https://github.com/Chulinuwu/skillloom",
+  "repository": "https://github.com/Chulinuwu/skillloom",
+  "license": "MIT",
+  "keywords": [
+    "agent-skills",
+    "skills",
+    "validation",
+    "promotion",
+    "rollback"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Skillloom",
+    "shortDescription": "Safe lifecycle management for portable Agent Skills",
+    "longDescription": "Capture reusable task evidence as Agent Skill candidates, validate and scan them locally, then promote or roll them back with explicit approval and durable evidence.",
+    "developerName": "Chulinuwu",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use $capture-learning to preserve this reusable workflow safely.",
+      "Use $curate-skills to review a managed skill before changing it."
+    ],
+    "websiteURL": "https://github.com/Chulinuwu/skillloom"
+  }
+}

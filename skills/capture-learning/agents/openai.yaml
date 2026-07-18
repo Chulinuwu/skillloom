@@ -1,0 +1,4 @@
+interface:
+  display_name: "Capture Learning"
+  short_description: "Turn reusable evidence into reviewed skills"
+  default_prompt: "Use $capture-learning to capture this reusable workflow safely."

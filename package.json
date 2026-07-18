@@ -1,0 +1,46 @@
+{
+  "name": "skillloom",
+  "version": "0.1.0",
+  "description": "Local-first lifecycle management for portable Agent Skills",
+  "type": "module",
+  "license": "MIT",
+  "author": "Chulinuwu",
+  "homepage": "https://github.com/Chulinuwu/skillloom#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chulinuwu/skillloom.git"
+  },
+  "keywords": [
+    "agent-skills",
+    "skills",
+    "claude-code",
+    "codex",
+    "rollback"
+  ],
+  "bin": {
+    "skillloom": "./dist/cli/main.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "prepack": "npm run build",
+    "pretest": "npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test --import tsx test/*.test.ts test/adapters/*.test.ts test/cli/*.test.ts test/commands/*.test.ts test/files/*.test.ts test/packaging/*.test.ts test/promotions/*.test.ts test/security/*.test.ts test/skills/*.test.ts",
+    "validate:plugin": "node scripts/validate-plugin.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.8",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.skillloom/
+work/upstream/
+.lean-ctx/
+.omx/state/
+.omx/tmux-hook.json
+.omx/codex-native-hook.inspect.js
+skillloom-*.tgz
