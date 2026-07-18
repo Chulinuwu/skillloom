@@ -8,7 +8,10 @@ export async function verifyBackup(before: Extract<PromotionTargetBefore, { kind
   if (!await pathExists(before.backupPath)) {
     throw new ValidationError(`Rollback backup is missing: ${before.backupPath}`);
   }
-  const validation = await validateSkillPackage(before.backupPath, { expectedName: basename(destination) });
+  const validation = await validateSkillPackage(before.backupPath, {
+    expectedName: basename(destination),
+    expectedHash: before.hash
+  });
   if (validation.packageHash !== before.hash) {
     throw new ValidationError(`Rollback backup hash mismatch: ${before.backupPath}`);
   }
@@ -28,14 +31,14 @@ export async function verifyBeforeState(destination: string, before: PromotionTa
     }
     return;
   }
-  if (!exists || await hashSkillDirectory(destination) !== before.hash) {
+  if (!exists || await hashSkillDirectory(destination, before.hash) !== before.hash) {
     throw new ValidationError(`Rollback restoration hash mismatch: ${destination}`);
   }
 }
 
-export async function activeHashAt(destination: string): Promise<string | null> {
+export async function activeHashAt(destination: string, expectedHash?: string): Promise<string | null> {
   if (!await pathExists(destination)) {
     return null;
   }
-  return await hashSkillDirectory(destination);
+  return await hashSkillDirectory(destination, expectedHash);
 }

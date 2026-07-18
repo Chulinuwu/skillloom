@@ -6,7 +6,8 @@ export const DEFAULT_POLICY = {
   maxFiles: 20,
   maxTotalBytes: 256 * 1024,
   allowWarnings: false,
-  allowExecutables: false
+  allowExecutables: false,
+  allowedCapabilities: [] as const
 };
 export const DEFAULT_HERMES = { minToolCalls: 3 };
 export const STORE_DIR = ".skillloom";

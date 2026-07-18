@@ -49,3 +49,19 @@ test("rejects every policy boundary without partial approval", () => {
   assert.equal(decision.approved, false);
   assert.equal(decision.reasons.length, 7);
 });
+
+test("denies undeclared policy capabilities by default", () => {
+  const decision = evaluateAutoPromotion(config, {
+    candidateId: "cand-capability",
+    packageHash: "abc",
+    targets: ["claude"],
+    scopes: ["project"],
+    files: [{ relativePath: "SKILL.md", size: 50, mode: 0o644 }],
+    warnings: 0,
+    dangers: 0,
+    capabilities: ["network"]
+  });
+
+  assert.equal(decision.approved, false);
+  assert.deepEqual(decision.reasons, ["capabilities are outside policy: network"]);
+});

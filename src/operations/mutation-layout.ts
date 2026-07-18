@@ -30,7 +30,7 @@ export async function observeMutation(
   hashes: MutationHashes,
   state: MutationSubphase
 ): Promise<MutationObservation> {
-  const observed = await inspectMutationPaths(target);
+  const observed = await inspectMutationPaths(target, hashes);
   const layouts = matchingMutationLayouts(observed, hashes);
   const allowed = allowedLayouts(state);
   const layout = allowed.find((item) => layouts.includes(item));
@@ -40,11 +40,11 @@ export async function observeMutation(
   return { layout, ...observed };
 }
 
-export async function inspectMutationPaths(target: MutationTargetPaths): Promise<MutationPathHashes> {
+export async function inspectMutationPaths(target: MutationTargetPaths, hashes?: MutationHashes): Promise<MutationPathHashes> {
   return {
-    destinationHash: await hashAt(target.destination),
-    stageHash: target.stagePath ? await hashAt(target.stagePath) : null,
-    displacedHash: await hashAt(target.displacedPath)
+    destinationHash: await hashAt(target.destination, hashes ? [hashes.beforeHash, hashes.afterHash] : []),
+    stageHash: target.stagePath ? await hashAt(target.stagePath, hashes ? [hashes.afterHash] : []) : null,
+    displacedHash: await hashAt(target.displacedPath, hashes ? [hashes.beforeHash] : [])
   };
 }
 
@@ -82,6 +82,14 @@ function matches(actual: string | null, expected: string | null): boolean {
   return actual === expected;
 }
 
-async function hashAt(path: string): Promise<string | null> {
-  return await pathExists(path) ? await hashSkillDirectory(path) : null;
+async function hashAt(path: string, expectedHashes: Array<string | null>): Promise<string | null> {
+  if (!await pathExists(path)) {
+    return null;
+  }
+  for (const expectedHash of expectedHashes) {
+    if (expectedHash && await hashSkillDirectory(path, expectedHash) === expectedHash) {
+      return expectedHash;
+    }
+  }
+  return await hashSkillDirectory(path);
 }

@@ -8,7 +8,7 @@ export function createDefaultConfig(createdAt: string): SkillloomConfig {
     version: STORE_VERSION,
     createdAt,
     mode: DEFAULT_MODE,
-    policy: { ...DEFAULT_POLICY, targets: [...DEFAULT_POLICY.targets] },
+    policy: { ...DEFAULT_POLICY, targets: [...DEFAULT_POLICY.targets], allowedCapabilities: [...DEFAULT_POLICY.allowedCapabilities] },
     hermes: { ...DEFAULT_HERMES }
   };
 }
@@ -34,9 +34,13 @@ function isPolicy(value: unknown): value is SkillloomConfig["policy"] {
     && isPositiveInteger(value.maxFiles)
     && isPositiveInteger(value.maxTotalBytes)
     && typeof value.allowWarnings === "boolean"
-    && typeof value.allowExecutables === "boolean";
+    && typeof value.allowExecutables === "boolean"
+    && (value.allowedCapabilities === undefined || Array.isArray(value.allowedCapabilities) && value.allowedCapabilities.every(isCapability));
 }
 
+function isCapability(value: unknown): boolean {
+  return value === "filesystem-read" || value === "filesystem-write" || value === "network" || value === "shell" || value === "secrets";
+}
 function isHermes(value: unknown): value is SkillloomConfig["hermes"] {
   return isRecord(value) && isPositiveInteger(value.minToolCalls);
 }

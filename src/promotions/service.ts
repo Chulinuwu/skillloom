@@ -42,7 +42,8 @@ export async function promoteCandidate(
       scopes: targets.map((target) => "scope" in target ? target.scope : "explicit"),
       files: validation.files,
       warnings: validation.findings.filter((finding) => finding.severity === "warning").length,
-      dangers: validation.findings.filter((finding) => finding.severity === "danger").length
+      dangers: validation.findings.filter((finding) => finding.severity === "danger").length,
+      capabilities: validation.metadata.capabilities ?? []
     });
     await appendEvent(context.projectRoot, {
       operationId: `op-policy-${randomUUID()}`,

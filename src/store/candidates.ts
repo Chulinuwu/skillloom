@@ -1,8 +1,9 @@
-import { chmod, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { createHash } from "node:crypto";
 import type { CandidateRecord, CandidateState, PackageFile, TrustFinding } from "../domain/types.js";
 import { atomicWriteJson } from "../files/atomic-write.js";
+import { copyPackageFiles } from "../files/package-copy.js";
 import { storeLayout } from "./layout.js";
 import { MAX_EVIDENCE_ITEMS, MAX_EVIDENCE_LENGTH } from "../config/defaults.js";
 
@@ -18,13 +19,7 @@ export async function writeCandidateSnapshot(root: string, record: CandidateReco
     throw error;
   });
   try {
-    await mkdir(skillRoot);
-    for (const file of files) {
-      const destination = join(skillRoot, file.relativePath);
-      await mkdir(dirname(destination), { recursive: true });
-      await writeFile(destination, await readFile(file.absolutePath), { mode: file.mode });
-      await chmod(destination, file.mode & 0o777);
-    }
+    await copyPackageFiles(files, skillRoot);
     await atomicWriteJson(join(candidateRoot, "candidate.json"), record);
   } catch (error) {
     await rm(candidateRoot, { recursive: true, force: true });

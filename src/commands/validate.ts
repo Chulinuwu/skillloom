@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { CandidateRecord, Command } from "../domain/types.js";
 import { ValidationError } from "../domain/errors.js";
 import { validateSkillPackage, type SkillValidation } from "../skills/validate.js";
+import { isModeAwarePackageHash } from "../skills/hash.js";
 import { readCandidate, updateCandidateValidation } from "../store/candidates.js";
 import { appendEvent } from "../store/journal.js";
 import { withStoreLock } from "../files/lock.js";
@@ -18,8 +19,12 @@ export async function validateCommand(command: Extract<Command, { command: "vali
     });
     try {
       const candidate = await readCandidate(projectRoot, command.candidateId);
+      if (!isModeAwarePackageHash(candidate.packageHash)) {
+        throw new ValidationError("Legacy candidate must be recaptured before validation");
+      }
       const validation = await validateSkillPackage(join(projectRoot, ".skillloom", "candidates", command.candidateId, "skill"), {
-        expectedName: candidate.metadata.name
+        expectedName: candidate.metadata.name,
+        expectedHash: candidate.packageHash
       });
       assertCandidateMatches(candidate, validation);
       const validated = await updateCandidateValidation(projectRoot, command.candidateId, validation.findings);

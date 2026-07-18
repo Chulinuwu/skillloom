@@ -54,7 +54,8 @@ test("published runtime has an empty production dependency closure", async () =>
     .filter(([path, metadata]) => path !== "" && !(metadata as { dev?: boolean }).dev)
     .map(([path]) => path);
   assert.deepEqual(productionPackages, []);
-  assert.equal(manifest.scripts.lint, "tsc -p tsconfig.json --noEmit");
+  assert.equal(manifest.scripts.lint, "eslint .");
+  assert.equal(manifest.scripts.typecheck, "tsc -p tsconfig.json --noEmit");
 });
 
 test("production dependency graph excludes network, provider, and background-service APIs", async () => {

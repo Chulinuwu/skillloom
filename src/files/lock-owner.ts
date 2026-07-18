@@ -3,13 +3,13 @@ import { join } from "node:path";
 import type { LockDiagnostic } from "../operations/types.js";
 import { atomicWriteJson } from "./atomic-write.js";
 
-const STALE_LOCK_MS = 5 * 60 * 1000;
 
 export type LockOwner = {
   pid: number;
   createdAt: string;
   operationId: string;
   context: string;
+  token?: string;
 };
 
 export async function writeLockOwner(lockPath: string, owner: LockOwner): Promise<void> {
@@ -30,7 +30,7 @@ export async function readLockOwnerDiagnostic(lockPath: string): Promise<LockDia
     if (!isLockOwnerBase(value)) {
       return { state: "invalid", path: lockPath, action: "Inspect invalid lock metadata" };
     }
-    const stale = Date.now() - Date.parse(value.createdAt) > STALE_LOCK_MS || !processExists(value.pid);
+    const stale = !processExists(value.pid);
     return {
       state: stale ? "stale" : "active",
       path: lockPath,
@@ -43,6 +43,18 @@ export async function readLockOwnerDiagnostic(lockPath: string): Promise<LockDia
   } catch (error) {
     if (errorCode(error) === "ENOENT" || error instanceof SyntaxError) {
       return { state: "invalid", path: lockPath, action: "Inspect invalid lock metadata" };
+    }
+    throw error;
+  }
+}
+
+export async function readLockToken(lockPath: string): Promise<string | undefined> {
+  try {
+    const value: unknown = JSON.parse(await readFile(join(lockPath, "lock.json"), "utf8"));
+    return isLockOwnerBase(value) ? optionalString(value, "token") : undefined;
+  } catch (error) {
+    if (errorCode(error) === "ENOENT" || error instanceof SyntaxError) {
+      return undefined;
     }
     throw error;
   }

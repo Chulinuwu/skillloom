@@ -4,7 +4,7 @@ import { collectPackageFiles } from "../files/tree.js";
 import { ValidationError } from "../domain/errors.js";
 import type { PackageFile, SkillMetadata } from "../domain/types.js";
 import { parseSkillMetadata } from "./frontmatter.js";
-import { hashPackage } from "./hash.js";
+import { hashPackage, hashPackageForExpected } from "./hash.js";
 import { scanSkillPackage } from "../security/scan.js";
 import { assertResourceReferencesExist, extractSkillResourceReferences, type SkillResourceReference } from "./references.js";
 
@@ -19,6 +19,7 @@ export type SkillValidation = {
 export type SkillValidationOptions = {
   expectedName?: string;
   folderNamePolicy?: "none" | "match-metadata";
+  expectedHash?: string;
 };
 
 export async function validateSkillPackage(root: string, options: SkillValidationOptions = {}): Promise<SkillValidation> {
@@ -45,7 +46,7 @@ export async function validateSkillPackage(root: string, options: SkillValidatio
   return {
     metadata,
     files,
-    packageHash: await hashPackage(files),
+    packageHash: options.expectedHash ? await hashPackageForExpected(files, options.expectedHash) : await hashPackage(files),
     findings: scanSkillPackage(texts, new Set(references.map((reference) => reference.path))),
     references
   };

@@ -17,7 +17,7 @@ export async function stagePromotionTargets(
 ): Promise<void> {
   for (const [index, target] of targets.entries()) {
     await hooks.beforeStage?.(target.request, index);
-    const stagedHash = await stageCanonicalSkill(canonical, target.stagePath);
+    const stagedHash = await stageCanonicalSkill(canonical, target.stagePath, expectedHash);
     if (stagedHash !== expectedHash) {
       throw new ValidationError(`Staged package hash mismatch for ${target.request.adapter.name}`);
     }
@@ -78,12 +78,12 @@ async function backupTarget(
   if (!await pathExists(target.destination)) {
     return { kind: "absent" };
   }
-  const hash = await hashSkillDirectory(target.destination);
+  const hash = await hashSkillDirectory(target.destination, expectedBaseHash);
   if (expectedBaseHash && hash !== expectedBaseHash) {
     throw new ValidationError(`Installed base hash mismatch for ${target.request.adapter.name}`);
   }
   const backupPath = join(storeLayout(root).backups, promotionId, `${index}-${target.request.adapter.name}-${target.scope}`, basename(target.destination));
-  const backupHash = await backupSkill(target.destination, backupPath);
+  const backupHash = await backupSkill(target.destination, backupPath, hash);
   if (backupHash !== hash) {
     throw new ValidationError(`Backup hash mismatch for ${target.request.adapter.name}`);
   }

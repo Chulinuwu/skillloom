@@ -79,7 +79,7 @@ test("built CLI promotes byte-identical packages to Claude and Codex in isolated
   const doctorHuman = await runCli(projectRoot, homeDir, ["doctor", "--target", "claude,codex"], binDir);
   assert.match(doctorHuman.stdout, /^doctor: 10 ok, 0 warning\(s\)$/m);
   assert.match(doctorHuman.stdout, /\[ok\] claude runtime .*\/claude: Claude Code CLI is executable/);
-  assert.match(doctorHuman.stdout, /\[ok\] codex project skill safe-skill .* hash [a-f0-9]{64}/);
+  assert.match(doctorHuman.stdout, /\[ok\] codex project skill safe-skill .* hash sha256-v2:[a-f0-9]{64}/);
 });
 
 test("built CLI supports portable agents and relative generic targets without real HOME writes", async () => {

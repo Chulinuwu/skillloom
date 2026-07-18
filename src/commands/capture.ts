@@ -7,15 +7,16 @@ import type { CandidateBase, CandidateRecord, Command } from "../domain/types.js
 import { withStoreLock } from "../files/lock.js";
 import type { CaptureOperation } from "../operations/types.js";
 import { validateSkillPackage } from "../skills/validate.js";
-import { cleanEvidence, createCandidateId, stateForFindings, writeCandidateSnapshot } from "../store/candidates.js";
+import { cleanEvidence, createCandidateId, stateForFindings } from "../store/candidates.js";
+import { commitCandidateSnapshot, discardCandidateSnapshot, stageCandidateSnapshot, type StagedCandidateSnapshot } from "../store/candidate-snapshot.js";
 import { appendEvent } from "../store/journal.js";
 import { writeOperation } from "../store/operations.js";
 
 export async function captureCommand(command: Extract<Command, { command: "capture" }>, projectRoot = process.cwd()): Promise<CandidateRecord> {
   await ensureConfig(projectRoot);
+  const operationId = `op-capture-${randomUUID()}`;
+  const createdAt = new Date().toISOString();
   return await withStoreLock(projectRoot, async () => {
-    const operationId = `op-capture-${randomUUID()}`;
-    const createdAt = new Date().toISOString();
     const evidence = cleanEvidence(command.evidence);
     let checkpoint: CaptureOperation = {
       kind: "capture",
@@ -28,8 +29,10 @@ export async function captureCommand(command: Extract<Command, { command: "captu
     };
     await writeOperation(projectRoot, checkpoint);
     await appendEvent(projectRoot, { operationId, kind: "capture", phase: "started", evidence });
+    let snapshot: StagedCandidateSnapshot | undefined;
     try {
-      const validation = await validateSkillPackage(resolve(command.source), { folderNamePolicy: "match-metadata" });
+      snapshot = await stageCandidateSnapshot(projectRoot, operationId, resolve(command.source));
+      const validation = await validateSkillPackage(snapshot.skillRoot, { folderNamePolicy: "match-metadata" });
       const base = await captureBase(command.base, validation.metadata.name);
       checkpoint = { ...checkpoint, phase: "validated", updatedAt: new Date().toISOString() };
       await writeOperation(projectRoot, checkpoint);
@@ -46,7 +49,8 @@ export async function captureCommand(command: Extract<Command, { command: "captu
         findings: validation.findings,
         base
       };
-      await writeCandidateSnapshot(projectRoot, record, validation.files);
+      await commitCandidateSnapshot(projectRoot, record, snapshot);
+      snapshot = undefined;
       checkpoint = { ...checkpoint, phase: "snapshotted", candidateId: record.candidateId, updatedAt: new Date().toISOString() };
       await writeOperation(projectRoot, checkpoint);
       await appendEvent(projectRoot, { operationId, kind: "capture", phase: "snapshotted", evidence: { candidateId: record.candidateId } });
@@ -60,6 +64,9 @@ export async function captureCommand(command: Extract<Command, { command: "captu
       });
       return record;
     } catch (error) {
+      if (snapshot) {
+        await discardCandidateSnapshot(snapshot).catch(() => undefined);
+      }
       const message = error instanceof Error ? error.message : String(error);
       await writeOperation(projectRoot, {
         ...checkpoint,
@@ -71,7 +78,7 @@ export async function captureCommand(command: Extract<Command, { command: "captu
       await appendEvent(projectRoot, { operationId, kind: "capture", phase: "failed", error: message });
       throw error;
     }
-  });
+  }, { operationId, context: "capture" });
 }
 
 async function captureBase(input: string | undefined, expectedName: string): Promise<CandidateBase> {

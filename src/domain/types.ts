@@ -85,9 +85,11 @@ export type DoctorReport = {
 
 export type CandidateState = "captured" | "validated" | "blocked" | "promoted" | "superseded";
 
+export type SkillCapability = "filesystem-read" | "filesystem-write" | "network" | "shell" | "secrets";
 export type SkillMetadata = {
   name: string;
   description: string;
+  capabilities?: SkillCapability[];
 };
 
 export type PackageFile = {

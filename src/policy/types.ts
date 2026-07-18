@@ -1,4 +1,4 @@
-import type { TargetName, TargetScope } from "../domain/types.js";
+import type { SkillCapability, TargetName, TargetScope } from "../domain/types.js";
 
 export type AutoPromotionRequest = {
   candidateId: string;
@@ -8,6 +8,7 @@ export type AutoPromotionRequest = {
   files: Array<{ relativePath: string; size: number; mode: number }>;
   warnings: number;
   dangers: number;
+  capabilities?: SkillCapability[];
 };
 
 export type PolicyDecision = {

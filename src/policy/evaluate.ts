@@ -15,6 +15,11 @@ export function evaluateAutoPromotion(config: SkillloomConfig, request: AutoProm
   if (deniedTargets.length > 0) {
     reasons.push(`targets are outside policy: ${deniedTargets.join(",")}`);
   }
+  const allowedCapabilities = config.policy.allowedCapabilities ?? [];
+  const deniedCapabilities = (request.capabilities ?? []).filter((capability) => !allowedCapabilities.includes(capability));
+  if (deniedCapabilities.length > 0) {
+    reasons.push(`capabilities are outside policy: ${deniedCapabilities.join(",")}`);
+  }
   if (request.files.length > config.policy.maxFiles) {
     reasons.push(`file count ${request.files.length} exceeds ${config.policy.maxFiles}`);
   }

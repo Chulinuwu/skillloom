@@ -48,11 +48,11 @@ async function verifyRollbackCheckpoint(
       throw new ValidationError(`Rollback resume temporary path mismatch: ${target.destination}`);
     }
     if (target.before.kind === "present") {
-      if (!await pathExists(target.before.backupPath) || await hashSkillDirectory(target.before.backupPath) !== target.before.hash) {
+      if (!await pathExists(target.before.backupPath) || await hashSkillDirectory(target.before.backupPath, target.before.hash) !== target.before.hash) {
         throw new ValidationError(`Rollback resume backup hash mismatch: ${target.destination}`);
       }
     }
-    if (target.stagePath && await pathExists(target.stagePath) && target.before.kind === "present" && await hashSkillDirectory(target.stagePath) !== target.before.hash) {
+    if (target.stagePath && await pathExists(target.stagePath) && target.before.kind === "present" && await hashSkillDirectory(target.stagePath, target.before.hash) !== target.before.hash) {
       throw new ValidationError(`Rollback resume staged hash mismatch: ${target.destination}`);
     }
     await observeMutation(target, {

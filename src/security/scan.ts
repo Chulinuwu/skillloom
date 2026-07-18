@@ -1,6 +1,6 @@
 import type { TrustFinding } from "../domain/types.js";
 import { comparePackagePath } from "../files/tree.js";
-import { SCANNER_RULES } from "./patterns.js";
+import { SCANNER_RULES, type ScannerRule } from "./patterns.js";
 
 type ScannablePackageFile = {
   relativePath: string;
@@ -8,7 +8,11 @@ type ScannablePackageFile = {
   mode?: number;
 };
 
-export function scanSkillPackage(files: ScannablePackageFile[], declaredExecutables: ReadonlySet<string> = new Set()): TrustFinding[] {
+export function scanSkillPackage(
+  files: ScannablePackageFile[],
+  declaredExecutables: ReadonlySet<string> = new Set(),
+  rules: readonly ScannerRule[] = SCANNER_RULES
+): TrustFinding[] {
   const findings: TrustFinding[] = [];
   for (const file of [...files].sort((left, right) => comparePackagePath(left.relativePath, right.relativePath))) {
     if (((file.mode ?? 0) & 0o111) !== 0 && !declaredExecutables.has(file.relativePath)) {
@@ -22,7 +26,8 @@ export function scanSkillPackage(files: ScannablePackageFile[], declaredExecutab
     }
     const lines = file.text.split(/\r?\n/);
     for (const [index, line] of lines.entries()) {
-      for (const rule of SCANNER_RULES) {
+      for (const rule of rules) {
+        rule.pattern.lastIndex = 0;
         if (rule.pattern.test(line)) {
           findings.push({
             ruleId: rule.ruleId,

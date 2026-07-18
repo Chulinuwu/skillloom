@@ -11,7 +11,7 @@ export async function buildRollbackTargets(
   operationId: string
 ): Promise<PreparedRollbackTarget[]> {
   return await Promise.all(promotion.targets.map(async (target) => {
-    const activeHash = await activeHashAt(target.destination);
+    const activeHash = await activeHashAt(target.destination, target.afterHash);
     if (!approval.force && activeHash !== target.afterHash) {
       throw new PromotionPolicyError(`Rollback active hash mismatch at ${target.destination}`);
     }
@@ -32,7 +32,7 @@ export async function stageRollbackTargets(targets: PreparedRollbackTarget[]): P
   for (const target of targets) {
     if (target.before.kind === "present" && target.stagePath) {
       await verifyBackup(target.before, target.destination);
-      const stagedHash = await stageCanonicalSkill(target.before.backupPath, target.stagePath);
+      const stagedHash = await stageCanonicalSkill(target.before.backupPath, target.stagePath, target.before.hash);
       if (stagedHash !== target.before.hash) {
         throw new ValidationError(`Rollback staged hash mismatch at ${target.destination}`);
       }

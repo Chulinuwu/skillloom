@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { claudeCodeAdapter } from "../../src/adapters/claude-code.js";
 import { captureCommand } from "../../src/commands/capture.js";
@@ -123,6 +123,23 @@ test("rollback refuses active conflicts unless forced and removes a fresh instal
   const freshDestination = fresh.targets[0].destination;
   await rollbackPromotion(context.projectRoot, fresh.promotionId, { yes: true, force: false });
   await assert.rejects(() => stat(freshDestination), { code: "ENOENT" });
+});
+
+test("rollback detects permission-only tampering", async () => {
+  const context = await setup();
+  const source = await createSkillFixture();
+  const candidate = await captureCommand({ command: "capture", source, createdBy: "agent", evidence: [], json: true }, context.projectRoot);
+  const promotion = await promoteCandidate(context, candidate.candidateId, [
+    { adapter: claudeCodeAdapter, scope: "project" }
+  ], { yes: true, acceptWarnings: false });
+  const destination = promotion.targets[0].destination;
+
+  await chmod(join(destination, "SKILL.md"), 0o755);
+
+  await assert.rejects(
+    () => rollbackPromotion(context.projectRoot, promotion.promotionId, { yes: true, force: false }),
+    /active hash mismatch/i
+  );
 });
 
 test("multi-target rollback compensates prior targets in reverse order", async () => {

@@ -73,11 +73,11 @@ async function verifyTarget(target: PromotionCheckpointTarget, promotionId: stri
     throw new ValidationError(`Resume temporary path mismatch: ${target.destination}`);
   }
   if (target.before.kind === "present") {
-    if (!await pathExists(target.before.backupPath) || await hashSkillDirectory(target.before.backupPath) !== target.before.hash) {
+    if (!await pathExists(target.before.backupPath) || await hashSkillDirectory(target.before.backupPath, target.before.hash) !== target.before.hash) {
       throw new ValidationError(`Resume backup hash mismatch: ${target.destination}`);
     }
   }
-  if (await pathExists(target.stagePath) && await hashSkillDirectory(target.stagePath) !== target.afterHash) {
+  if (await pathExists(target.stagePath) && await hashSkillDirectory(target.stagePath, target.afterHash) !== target.afterHash) {
     throw new ValidationError(`Resume staged hash mismatch: ${target.destination}`);
   }
   return await observeMutation(target, {

@@ -1,8 +1,9 @@
-import { copyFile, lstat, mkdir, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { lstat, rm } from "node:fs/promises";
+import { dirname } from "node:path";
 import { syncDirectory } from "../files/durability.js";
+import { copyPackageFiles } from "../files/package-copy.js";
 import { collectPackageFiles } from "../files/tree.js";
-import { hashPackage } from "../skills/hash.js";
+import { hashPackage, hashPackageForExpected } from "../skills/hash.js";
 
 export async function pathExists(path: string): Promise<boolean> {
   try {
@@ -16,20 +17,21 @@ export async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-export async function hashSkillDirectory(path: string): Promise<string> {
-  return await hashPackage(await collectPackageFiles(path));
+export async function hashSkillDirectory(path: string, expectedHash?: string): Promise<string> {
+  const files = await collectPackageFiles(path);
+  return expectedHash ? await hashPackageForExpected(files, expectedHash) : await hashPackage(files);
 }
 
-export async function stageCanonicalSkill(source: string, stagePath: string): Promise<string> {
+export async function stageCanonicalSkill(source: string, stagePath: string, expectedHash?: string): Promise<string> {
   const files = await collectPackageFiles(source);
-  await copyPackage(files, stagePath);
-  return await hashPackage(await collectPackageFiles(stagePath));
+  await copyPackageFiles(files, stagePath);
+  return await hashSkillDirectory(stagePath, expectedHash);
 }
 
-export async function backupSkill(destination: string, backupPath: string): Promise<string> {
+export async function backupSkill(destination: string, backupPath: string, expectedHash?: string): Promise<string> {
   const files = await collectPackageFiles(destination);
-  await copyPackage(files, backupPath);
-  return await hashPackage(await collectPackageFiles(backupPath));
+  await copyPackageFiles(files, backupPath);
+  return await hashSkillDirectory(backupPath, expectedHash);
 }
 
 export async function discardPromotionPath(path: string): Promise<void> {
@@ -37,21 +39,6 @@ export async function discardPromotionPath(path: string): Promise<void> {
   await rm(path, { recursive: true, force: true });
   if (existed) {
     await syncDirectory(dirname(path));
-  }
-}
-
-async function copyPackage(files: Awaited<ReturnType<typeof collectPackageFiles>>, destination: string): Promise<void> {
-  await mkdir(dirname(destination), { recursive: true });
-  await mkdir(destination);
-  try {
-    for (const file of files) {
-      const target = join(destination, file.relativePath);
-      await mkdir(dirname(target), { recursive: true });
-      await copyFile(file.absolutePath, target);
-    }
-  } catch (error) {
-    await rm(destination, { recursive: true, force: true });
-    throw error;
   }
 }
 

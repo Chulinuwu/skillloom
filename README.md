@@ -2,9 +2,11 @@
 
 ![Skillloom weaving portable Agent Skills through validation and rollback](assets/skillloom-hero.webp)
 
-Local-first control plane for learning, scanning, promoting, and rolling back portable Agent Skills across Claude Code and Codex.
+Local-first package manager and lifecycle control plane for versioned, auditable, and reversible Agent Skills across Claude Code and Codex.
 
 [![npm version](https://img.shields.io/npm/v/%40chulinxz%2Fskillloom.svg)](https://www.npmjs.com/package/@chulinxz/skillloom)
+[![CI](https://github.com/Chulinuwu/skillloom/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Chulinuwu/skillloom/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Chulinuwu/skillloom/actions/workflows/codeql.yml/badge.svg?branch=dev)](https://github.com/Chulinuwu/skillloom/actions/workflows/codeql.yml)
 [![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-339933.svg)](https://nodejs.org/)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -59,7 +61,19 @@ skillloom mode hermes
 skillloom mode --json
 ```
 
-The default automatic policy permits only project-scoped Claude Code and Codex destinations, at most 20 files and 256 KiB, with no warnings, danger findings, or executable files. Generic directories and user scope require manual approval. Edit `.skillloom/config.json` only when deliberately changing that trust boundary.
+The default automatic policy permits only project-scoped Claude Code and Codex destinations, at most 20 files and 256 KiB, with no warnings, danger findings, executable files, or declared host capabilities. Generic directories and user scope require manual approval. Edit `.skillloom/config.json` only when deliberately changing that trust boundary.
+
+Skills may declare an advisory capability manifest using the supported inline frontmatter form:
+
+```yaml
+---
+name: repository-audit
+description: Audit a local repository and report findings.
+capabilities: [filesystem-read, shell]
+---
+```
+
+Supported capabilities are `filesystem-read`, `filesystem-write`, `network`, `shell`, and `secrets`. Automatic promotion rejects declarations outside `policy.allowedCapabilities`; the default allowlist is empty. Declarations make review and policy intent explicit, but cannot prove that prose will not request an undeclared capability.
 
 ## Hermes-style learning loop
 
@@ -166,15 +180,19 @@ The canonical adapters install skills to:
 
 ## Security boundary
 
-Skillloom does not embed an LLM, replace the host agent runtime, operate a daemon, or claim that deterministic scanning proves behavioral quality. The host agent still decides what procedure to draft. Automatic approval only proves that the immutable candidate satisfies the configured structural and trust policy.
+Skillloom protects the local lifecycle boundary. It rejects symlinks, non-regular files, binary payloads, oversized packages, undeclared executables, unsafe destinations, changed snapshots, and transaction layouts that disagree with durable checkpoints. Mode-aware package hashes cover relative paths, normalized file permissions, and content. Capture validates an isolated staging snapshot before atomically committing the candidate.
 
-Danger findings always block promotion. Manual warning overrides require both `--accept-warnings` and `--yes`. Executable resources are denied by the default automatic policy even when the package declares them.
+Skillloom does not sandbox the host agent, execute semantic analysis, embed an LLM, replace the host runtime, or claim that regex scanning proves behavioral quality. Obfuscated, indirect, novel, or purely natural-language instructions may evade deterministic rules. The host agent and user remain responsible for reviewing requested behavior and granting tool permissions. Scanner rules are deterministic and extensible, while automatic approval only proves that the immutable candidate satisfies the configured structural, capability, and trust policy.
+
+Danger findings always block promotion. Manual warning overrides require both `--accept-warnings` and `--yes`. Executable resources are denied by the default automatic policy even when the package declares them. Live lock owners are never taken over because of elapsed time alone; terminate a genuinely hung owner before recovery.
+
+Hashes created before the mode-aware format remain readable for historical rollback and recovery. Legacy candidates must be recaptured before they can receive the new permission-integrity guarantee.
 
 Runtime state lives under `.skillloom/`: configuration, immutable candidates, learning events, the append-only journal, promotions, operations, backups, staging data, and locks.
 
 ## Development
 
-Requirements are Node.js 20 or newer and npm. Claude Code and Codex CLIs are only required for their official plugin validators.
+Requirements are Node.js 20 or newer and npm. Claude Code and Codex CLIs are only required for their official plugin validators. CI runs the full lifecycle and packed global-install smoke test on Node.js 20, 22, and 24. CodeQL and Dependabot cover source and dependency changes.
 
 ```bash
 npm ci
@@ -185,6 +203,8 @@ npm run build
 npm run validate:plugin
 npm pack
 ```
+
+The manual `Publish npm package` workflow uses npm trusted publishing and `--provenance`. Configure the repository, workflow filename, and `npm` environment as a trusted publisher on npm before running it.
 
 Validate the plugin skills directly when changing their instructions:
 

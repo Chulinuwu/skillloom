@@ -22,7 +22,7 @@ export async function recoverRecordedPromotion(root: string, checkpoint: Promoti
   }
   if (record.result === "applied") {
     for (const target of record.targets) {
-      if (!await pathExists(target.destination) || await hashSkillDirectory(target.destination) !== target.afterHash) {
+      if (!await pathExists(target.destination) || await hashSkillDirectory(target.destination, target.afterHash) !== target.afterHash) {
         throw new ValidationError(`Recorded promotion active hash mismatch: ${target.destination}`);
       }
     }

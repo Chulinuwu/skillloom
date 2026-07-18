@@ -189,6 +189,37 @@ test("allows declared executables while still scanning their content", async () 
   assert.equal(result.findings.some((finding) => finding.ruleId === "destructive-shell" && finding.file === "scripts/noop.sh"), true);
 });
 
+test("accepts CRLF frontmatter", async () => {
+  const dir = await tempDir();
+  await writeFile(join(dir, "SKILL.md"), [
+    "---",
+    "name: crlf-skill",
+    "description: Supports Windows line endings.",
+    "---",
+    ""
+  ].join("\r\n"));
+
+  const result = await validateSkillPackage(dir);
+
+  assert.equal(result.metadata.name, "crlf-skill");
+});
+
+test("parses a capability manifest from frontmatter", async () => {
+  const dir = await tempDir();
+  await writeFile(join(dir, "SKILL.md"), [
+    "---",
+    "name: capability-skill",
+    "description: Declares required host capabilities.",
+    "capabilities: [filesystem-read, network]",
+    "---",
+    ""
+  ].join("\n"));
+
+  const result = await validateSkillPackage(dir);
+
+  assert.deepEqual(result.metadata.capabilities, ["filesystem-read", "network"]);
+});
+
 test("blocks executable SKILL.md", async () => {
   const dir = await createSkillFixture();
   await chmod(join(dir, "SKILL.md"), 0o755);

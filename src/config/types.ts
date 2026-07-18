@@ -1,4 +1,4 @@
-import type { Scope, ScopedTargetName, SkillloomMode } from "../domain/types.js";
+import type { Scope, ScopedTargetName, SkillCapability, SkillloomMode } from "../domain/types.js";
 
 export type AutoPromotionPolicy = {
   targets: ScopedTargetName[];
@@ -7,6 +7,7 @@ export type AutoPromotionPolicy = {
   maxTotalBytes: number;
   allowWarnings: boolean;
   allowExecutables: boolean;
+  allowedCapabilities?: SkillCapability[];
 };
 
 export type HermesSettings = {

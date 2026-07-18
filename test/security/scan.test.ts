@@ -26,3 +26,16 @@ test("finds undeclared executables deterministically and scans declared executab
     ["undeclared-executable", "scripts/undeclared.sh", 1]
   ]);
 });
+
+test("accepts caller-defined scanner rules", () => {
+  const findings = scanSkillPackage([
+    { relativePath: "SKILL.md", text: "custom risky instruction\n" }
+  ], new Set(), [{
+    ruleId: "custom-rule",
+    severity: "warning",
+    pattern: /custom risky/,
+    message: "Custom policy finding"
+  }]);
+
+  assert.deepEqual(findings.map((finding) => finding.ruleId), ["custom-rule"]);
+});

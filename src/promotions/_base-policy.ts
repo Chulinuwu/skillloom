@@ -11,7 +11,7 @@ export async function assertBaseState(base: CandidateBase, destinations: string[
     return;
   }
   try {
-    if (await realpath(base.path) !== base.path || await hashSkillDirectory(base.path) !== base.hash) {
+    if (await realpath(base.path) !== base.path || await hashSkillDirectory(base.path, base.hash) !== base.hash) {
       throw new PromotionPolicyError(`Captured base path hash mismatch at ${base.path}`);
     }
   } catch (error) {
@@ -21,7 +21,7 @@ export async function assertBaseState(base: CandidateBase, destinations: string[
     throw new PromotionPolicyError(`Captured base path hash mismatch at ${base.path}`);
   }
   for (const destination of destinations) {
-    if (await pathExists(destination) && await hashSkillDirectory(destination) !== base.hash) {
+    if (await pathExists(destination) && await hashSkillDirectory(destination, base.hash) !== base.hash) {
       throw new PromotionPolicyError(`Installed base hash mismatch at ${destination}`);
     }
   }
