@@ -23,7 +23,7 @@
     "self-learning"
   ],
   "bin": {
-    "skillloom": "./dist/cli/main.js"
+    "skillloom": "dist/cli/main.js"
   },
   "files": [
     "assets",

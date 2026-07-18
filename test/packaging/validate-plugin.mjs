@@ -60,6 +60,7 @@ async function validateManifests() {
 
   invariant(version === "0.2.1", "package version must be 0.2.1");
   invariant(packageLock.version === version && packageLock.packages?.[""]?.version === version, "package-lock version must match package.json");
+  invariant(packageJson.bin?.skillloom === "dist/cli/main.js", "package bin must expose dist/cli/main.js");
   invariant(claude.version === version && codex.version === version, "plugin versions must match package.json");
   invariant(claudeMarketplace.plugins?.[0]?.version === version, "Claude marketplace version must match package.json");
   invariant(claude.name === "skillloom" && codex.name === "skillloom", "plugin names must be skillloom");
