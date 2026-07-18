@@ -11,7 +11,7 @@ const execute = promisify(execFile);
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
 test("repository plugin validator passes", async () => {
-  const { stdout, stderr } = await execute(process.execPath, [join(root, "scripts/validate-plugin.mjs")], { cwd: root });
+  const { stdout, stderr } = await execute(process.execPath, [join(root, "test/packaging/validate-plugin.mjs")], { cwd: root });
   assert.equal(stderr, "");
   assert.match(stdout, /validation passed/u);
 });

@@ -34,7 +34,7 @@
     "pretest": "npm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test --import tsx test/*.test.ts test/adapters/*.test.ts test/cli/*.test.ts test/commands/*.test.ts test/config/*.test.ts test/files/*.test.ts test/hooks/*.test.ts test/packaging/*.test.ts test/policy/*.test.ts test/promotions/*.test.ts test/security/*.test.ts test/skills/*.test.ts",
-    "validate:plugin": "node scripts/validate-plugin.mjs"
+    "validate:plugin": "node test/packaging/validate-plugin.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.19.8",

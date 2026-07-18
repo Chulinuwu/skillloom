@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .skillloom/
+docs/
 work/upstream/
 .lean-ctx/
 .omx/

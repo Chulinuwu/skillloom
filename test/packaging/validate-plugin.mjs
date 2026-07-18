@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execute = promisify(execFile);
-const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const repository = "https://github.com/Chulinuwu/skillloom";
 const skillNames = ["autonomous-learning", "capture-learning", "curate-skills"];
 
@@ -152,7 +152,7 @@ async function validateFiles() {
     ".codex-plugin/plugin.json",
     ".agents/plugins/marketplace.json",
     "README.md",
-    "scripts/validate-plugin.mjs",
+    "test/packaging/validate-plugin.mjs",
     ...await filesUnder("hooks"),
     ...await filesUnder("skills")
   ];
