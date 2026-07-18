@@ -1,12 +1,14 @@
 # Skillloom
 
+![Skillloom weaving portable Agent Skills through validation and rollback](assets/skillloom-hero.webp)
+
 Local-first control plane for learning, scanning, promoting, and rolling back portable Agent Skills across Claude Code and Codex.
 
 [![npm version](https://img.shields.io/npm/v/%40chulinxz%2Fskillloom.svg)](https://www.npmjs.com/package/@chulinxz/skillloom)
 [![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-339933.svg)](https://nodejs.org/)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-![Skillloom capture, validate, and promote demo](assets/demo.gif)
+![Skillloom capture, validate, and promote demo](assets/demo.webp)
 
 Skillloom adapts the useful self-improvement loop from Hermes Agent to plugin lifecycle hooks while leaving conversations, tools, model routing, and execution inside the host agent.
 

@@ -58,7 +58,7 @@ async function validateManifests() {
   const codexMarketplace = await json(".agents/plugins/marketplace.json");
   const version = packageJson.version;
 
-  invariant(version === "0.2.0", "package version must be 0.2.0");
+  invariant(version === "0.2.1", "package version must be 0.2.1");
   invariant(packageLock.version === version && packageLock.packages?.[""]?.version === version, "package-lock version must match package.json");
   invariant(claude.version === version && codex.version === version, "plugin versions must match package.json");
   invariant(claudeMarketplace.plugins?.[0]?.version === version, "Claude marketplace version must match package.json");

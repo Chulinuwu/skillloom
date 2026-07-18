@@ -8,7 +8,7 @@
     {
       "name": "skillloom",
       "description": "Policy-gated self-learning for portable Agent Skills across Claude Code and Codex.",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "source": "./",
       "author": {
         "name": "Chulinuwu"
