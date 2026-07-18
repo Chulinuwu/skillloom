@@ -54,7 +54,15 @@ function isLearningEvent(value: unknown): value is { eventId: string; outcome: s
 }
 
 function isCandidate(value: unknown): value is { candidateId: string; state: string; metadata: { name: string } } {
-  return typeof value === "object" && value !== null && "candidateId" in value;
+  return typeof value === "object"
+    && value !== null
+    && "candidateId" in value
+    && "state" in value
+    && "metadata" in value
+    && typeof value.metadata === "object"
+    && value.metadata !== null
+    && "name" in value.metadata
+    && typeof value.metadata.name === "string";
 }
 
 function isStatus(value: unknown): value is {

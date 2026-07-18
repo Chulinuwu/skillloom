@@ -34,6 +34,15 @@ test("built CLI promotes byte-identical packages to Claude and Codex in isolated
     "--yes",
     "--json"
   ]);
+  const humanPromotion = await runCli(projectRoot, homeDir, [
+    "promote",
+    candidate.candidateId,
+    "--target",
+    "agents",
+    "--scope",
+    "user",
+    "--yes"
+  ]);
   const userPromotion = await runCli(projectRoot, homeDir, [
     "promote",
     candidate.candidateId,
@@ -47,6 +56,7 @@ test("built CLI promotes byte-identical packages to Claude and Codex in isolated
 
   assert.equal(JSON.parse(projectPromotion.stdout).result, "applied");
   assert.equal(JSON.parse(userPromotion.stdout).result, "applied");
+  assert.match(humanPromotion.stdout.trim(), /^promo-[a-f0-9-]+ applied 1 target\(s\)$/);
   const destinations = [
     join(projectRoot, ".claude", "skills", "safe-skill"),
     join(projectRoot, ".agents", "skills", "safe-skill"),

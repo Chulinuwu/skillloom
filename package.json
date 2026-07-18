@@ -1,7 +1,7 @@
 {
   "name": "skillloom",
   "version": "0.2.0",
-  "description": "Policy-gated self-learning for portable Agent Skills",
+  "description": "Local-first control plane for learning, scanning, promoting, and rolling back portable Agent Skills",
   "type": "module",
   "license": "MIT",
   "author": "Chulinuwu",
@@ -12,16 +12,21 @@
   },
   "keywords": [
     "agent-skills",
+    "ai-agents",
     "skills",
     "claude-code",
     "codex",
+    "local-first",
+    "security",
     "rollback",
+    "skill-management",
     "self-learning"
   ],
   "bin": {
     "skillloom": "./dist/cli/main.js"
   },
   "files": [
+    "assets",
     "dist",
     "skills",
     "README.md",

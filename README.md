@@ -1,8 +1,45 @@
 # Skillloom
 
-Skillloom adds policy-gated skill learning to Claude Code, Codex, and portable Agent Skills consumers. It adapts the useful self-improvement loop from Hermes Agent to plugin lifecycle hooks while leaving conversations, tools, model routing, and execution inside the host agent.
+Local-first control plane for learning, scanning, promoting, and rolling back portable Agent Skills across Claude Code and Codex.
+
+[![npm version](https://img.shields.io/npm/v/skillloom.svg)](https://www.npmjs.com/package/skillloom)
+[![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-339933.svg)](https://nodejs.org/)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+![Skillloom capture, validate, and promote demo](assets/demo.gif)
+
+Skillloom adapts the useful self-improvement loop from Hermes Agent to plugin lifecycle hooks while leaving conversations, tools, model routing, and execution inside the host agent.
 
 The host agent reviews completed work, drafts a focused Agent Skill candidate, and asks Skillloom to validate and promote it. Skillloom owns the safety boundary: immutable snapshots, deterministic trust findings, policy decisions, transactional installation, crash recovery, quarantine evidence, and rollback.
+
+## Why Skillloom?
+
+Copying a skill directory installs whatever is there at that moment. It does not preserve what the agent proposed, why it was accepted, what was scanned, which targets changed, or how to safely undo a partial install.
+
+| Plain folder copy | Skillloom |
+| --- | --- |
+| Mutable source copied directly | Immutable candidate snapshot |
+| Review depends on the current agent turn | Deterministic structure and trust scan |
+| One destination at a time | Transactional Claude Code and Codex promotion |
+| No durable history | Append-only journal and promotion records |
+| Manual cleanup after a bad update | Hash-protected rollback and crash recovery |
+
+Local-first means the policy, candidates, audit trail, backups, and locks live under the local `.skillloom/` store. Skillloom has no hosted control plane, account, telemetry service, or daemon. The host agent may still use a cloud model.
+
+## Install
+
+```bash
+npm install --global skillloom@0.2
+skillloom init
+```
+
+Capture, validate, and promote one candidate:
+
+```bash
+skillloom capture ./draft-skill --created-by agent
+skillloom validate <candidate-id>
+skillloom promote <candidate-id> --target claude,codex --scope project --yes
+```
 
 ## Modes
 
@@ -90,15 +127,13 @@ skillloom recover-lock journal --yes
 
 ## Plugin installation
 
-Clone the repository and build the CLI first:
+Install the published CLI:
 
 ```bash
-npm ci
-npm run build
-npm link
+npm install --global skillloom@0.2
 ```
 
-`npm link` exposes the local `skillloom` binary used by the bundled skills. When a published v0.2 package is available, `npm install --global skillloom@0.2` is the equivalent CLI installation.
+For local development, clone the repository, run `npm ci && npm run build`, then use `npm link` to expose the same `skillloom` binary.
 
 Install for Claude Code from the repository root:
 
