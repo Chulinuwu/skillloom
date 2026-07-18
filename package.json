@@ -1,5 +1,5 @@
 {
-  "name": "skillloom",
+  "name": "@chulinxz/skillloom",
   "version": "0.2.0",
   "description": "Local-first control plane for learning, scanning, promoting, and rolling back portable Agent Skills",
   "type": "module",

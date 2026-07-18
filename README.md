@@ -2,7 +2,7 @@
 
 Local-first control plane for learning, scanning, promoting, and rolling back portable Agent Skills across Claude Code and Codex.
 
-[![npm version](https://img.shields.io/npm/v/skillloom.svg)](https://www.npmjs.com/package/skillloom)
+[![npm version](https://img.shields.io/npm/v/%40chulinxz%2Fskillloom.svg)](https://www.npmjs.com/package/@chulinxz/skillloom)
 [![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-339933.svg)](https://nodejs.org/)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -29,7 +29,7 @@ Local-first means the policy, candidates, audit trail, backups, and locks live u
 ## Install
 
 ```bash
-npm install --global skillloom@0.2
+npm install --global @chulinxz/skillloom@0.2
 skillloom init
 ```
 
@@ -130,7 +130,7 @@ skillloom recover-lock journal --yes
 Install the published CLI:
 
 ```bash
-npm install --global skillloom@0.2
+npm install --global @chulinxz/skillloom@0.2
 ```
 
 For local development, clone the repository, run `npm ci && npm run build`, then use `npm link` to expose the same `skillloom` binary.
