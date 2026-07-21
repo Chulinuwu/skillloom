@@ -133,6 +133,32 @@ test("built CLI rejects codex and agents collision without staging the shared pa
   await assert.rejects(() => stat(join(projectRoot, ".agents", "skills", "safe-skill")), { code: "ENOENT" });
 });
 
+test("built setup is explicit local-only, offline-safe, and idempotent with no harness CLIs", async () => {
+  const projectRoot = await tempDir("skillloom-setup-project-");
+  const homeDir = await tempDir("skillloom-setup-home-");
+  await assert.rejects(
+    () => runCli(projectRoot, homeDir, ["setup", "--target", "auto", "--hub", "auto", "--scope", "user", "--yes", "--json"], ""),
+    (error: unknown) => error instanceof Error
+      && "code" in error
+      && error.code === 2
+      && /--hub local/.test(error.message)
+  );
+  const first = JSON.parse((await runCli(projectRoot, homeDir, [
+    "setup", "--target", "auto", "--hub", "local", "--scope", "user", "--yes", "--json"
+  ], "")).stdout);
+  assert.equal(first.hub.mode, "local-only");
+  assert.deepEqual(first.targets.map(({ target, status }: { target: string; status: string }) => [target, status]), [
+    ["claude", "not-detected"],
+    ["codex", "not-detected"],
+    ["agents", "installed"]
+  ]);
+  const second = JSON.parse((await runCli(projectRoot, homeDir, ["setup", "--hub", "local", "--scope", "user", "--yes", "--json"], "")).stdout);
+  assert.equal(second.targets.find(({ target }: { target: string }) => target === "agents").status, "unchanged");
+  await stat(join(homeDir, ".agents", "skills", "capture-learning", "SKILL.md"));
+  const state = JSON.parse(await readFile(join(homeDir, ".skillloom", "hub", "setup.json"), "utf8"));
+  assert.equal(state.completed["agents:user"].packageVersion, "0.2.1");
+});
+
 async function runCli(projectRoot: string, homeDir: string, args: string[], path = process.env.PATH ?? "") {
   return await execFileAsync(process.execPath, [builtCli, ...args], {
     cwd: projectRoot,

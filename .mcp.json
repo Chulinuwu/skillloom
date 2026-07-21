@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "skillloom": {
+      "command": "skillloom",
+      "args": [
+        "bridge",
+        "--stdio"
+      ]
+    }
+  }
+}

@@ -56,6 +56,50 @@ test("parses validate and status", () => {
 test("rejects unknown flags", () => {
   assert.throws(() => parseArguments(["init", "--bad"]), /Unknown flag/);
 });
+test("parses zero-config setup, sync, and bridge commands", () => {
+  assert.deepEqual(parseArguments(["setup", "--target", "auto", "--hub", "auto", "--scope", "user", "--yes", "--json"]), {
+    command: "setup",
+    target: "auto",
+    hub: "auto",
+    scope: "user",
+    yes: true,
+    json: true
+  });
+  assert.deepEqual(parseArguments(["setup"]), {
+    command: "setup",
+    target: "auto",
+    hub: "auto",
+    scope: "user",
+    yes: false,
+    json: false
+  });
+  assert.deepEqual(parseArguments(["setup", "--hub", "local", "--target", "agents"]), {
+    command: "setup",
+    target: "agents",
+    hub: "local",
+    scope: "user",
+    yes: false,
+    json: false
+  });
+  assert.deepEqual(parseArguments(["sync", "--apply", "--json"]), {
+    command: "sync",
+    apply: true,
+    json: true
+  });
+  assert.deepEqual(parseArguments(["bridge", "--stdio"]), {
+    command: "bridge",
+    stdio: true,
+    json: false
+  });
+});
+test("setup rejects secret-bearing and endpoint override flags", () => {
+  for (const flag of ["--url", "--token", "--vault", "--db"]) {
+    assert.throws(() => parseArguments(["setup", flag, "value"]), new RegExp(`Unknown flag: ${flag}`, "u"));
+  }
+  assert.throws(() => parseArguments(["setup", "--hub", "https://hub.example.com"]), /--hub must be auto or local/u);
+  assert.throws(() => parseArguments(["bridge"]), /requires --stdio/u);
+  assert.throws(() => parseArguments(["bridge", "--stdio", "--json"]), /does not support --json/u);
+});
 
 test("parses a multi-target promotion", () => {
   assert.deepEqual(parseArguments(["promote", "cand-1", "--target", "claude,codex", "--yes"]), {

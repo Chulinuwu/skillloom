@@ -16,13 +16,18 @@ import { recoverLockCommand } from "../commands/recover-lock.js";
 import { modeCommand } from "../commands/mode.js";
 import { observeCommand } from "../commands/observe.js";
 import { journeyCommand } from "../commands/journey.js";
+import { bridgeCommand } from "../commands/bridge.js";
+import { setupCommand } from "../commands/setup.js";
+import { syncCommand } from "../commands/sync.js";
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   try {
     const command = parseArguments(argv);
     const result = await run(command);
-    process.stdout.write(formatOutput(result, command.json));
-    return 0;
+    if (result !== undefined) {
+      process.stdout.write(formatOutput(result, command.json));
+    }
+    return hasSetupFailure(result) ? 1 : 0;
   } catch (error) {
     const exitCode = error instanceof SkillloomError ? error.exitCode : 1;
     const message = error instanceof Error ? error.message : String(error);
@@ -32,6 +37,16 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 }
 
 async function run(command: ReturnType<typeof parseArguments>) {
+  if (command.command === "setup") {
+    return await setupCommand(command);
+  }
+  if (command.command === "sync") {
+    return await syncCommand(command);
+  }
+  if (command.command === "bridge") {
+    await bridgeCommand();
+    return undefined;
+  }
   if (command.command === "init") {
     return await initCommand(command);
   }
@@ -66,6 +81,16 @@ async function run(command: ReturnType<typeof parseArguments>) {
     return await journeyCommand(command);
   }
   return await statusCommand(command);
+}
+
+function hasSetupFailure(value: unknown): boolean {
+  return typeof value === "object"
+    && value !== null
+    && "command" in value
+    && value.command === "setup"
+    && "targets" in value
+    && Array.isArray(value.targets)
+    && value.targets.some((target) => typeof target === "object" && target !== null && "status" in target && target.status === "failed");
 }
 
 if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {

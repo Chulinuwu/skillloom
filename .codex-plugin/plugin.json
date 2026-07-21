@@ -18,6 +18,7 @@
     "self-learning"
   ],
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Skillloom",
     "shortDescription": "Policy-gated self-learning for portable Agent Skills",

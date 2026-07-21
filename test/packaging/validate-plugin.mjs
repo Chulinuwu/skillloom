@@ -54,6 +54,7 @@ async function validateManifests() {
   const packageLock = await json("package-lock.json");
   const claude = await json(".claude-plugin/plugin.json");
   const codex = await json(".codex-plugin/plugin.json");
+  const mcp = await json(".mcp.json");
   const claudeMarketplace = await json(".claude-plugin/marketplace.json");
   const codexMarketplace = await json(".agents/plugins/marketplace.json");
   const version = packageJson.version;
@@ -68,6 +69,10 @@ async function validateManifests() {
   invariant(claude.license === "MIT" && codex.license === "MIT" && packageJson.license === "MIT", "all packages must use MIT");
   invariant(!("skills" in claude) && !("hooks" in claude), "Claude manifest must use conventional root discovery");
   invariant(codex.skills === "./skills/", "Codex manifest must declare the shared skills root");
+  invariant(codex.mcpServers === "./.mcp.json", "Codex manifest must reference the root MCP configuration");
+  invariant(JSON.stringify(mcp) === JSON.stringify({
+    mcpServers: { skillloom: { command: "skillloom", args: ["bridge", "--stdio"] } }
+  }), "MCP configuration must use the local zero-secret stdio bridge");
   invariant(!("hooks" in codex), "Codex manifest must omit the currently unsupported hooks field");
   invariant(claudeMarketplace.name === "skillloom-dev" && claudeMarketplace.plugins?.[0]?.source === "./", "Claude development marketplace must use source ./");
   invariant(codexMarketplace.name === "skillloom-dev", "Codex development marketplace name must be skillloom-dev");
@@ -137,6 +142,7 @@ async function validateFiles() {
     ".claude-plugin/plugin.json",
     ".claude-plugin/marketplace.json",
     ".codex-plugin/plugin.json",
+    ".mcp.json",
     ".agents/plugins/marketplace.json",
     "hooks/hooks.json",
     "hooks/session-start.mjs",
@@ -151,6 +157,7 @@ async function validateFiles() {
     ".claude-plugin/plugin.json",
     ".claude-plugin/marketplace.json",
     ".codex-plugin/plugin.json",
+    ".mcp.json",
     ".agents/plugins/marketplace.json",
     "README.md",
     "test/packaging/validate-plugin.mjs",

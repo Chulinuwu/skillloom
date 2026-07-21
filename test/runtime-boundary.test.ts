@@ -42,6 +42,12 @@ const forbiddenBuiltinModules = new Set([
   "node:tls",
   "node:worker_threads"
 ]);
+const explicitRuntimeAdapterImportAllowlist = new Set([
+  "src/hub/http/node-listener.ts imports node:http",
+  "src/hub/http/server.ts imports node:http",
+  "src/hub/http/types.ts imports node:http",
+  "src/setup/process.ts imports node:child_process"
+]);
 
 test("published runtime has an empty production dependency closure", async () => {
   const manifest = JSON.parse(await readFile(join(repositoryRoot, "package.json"), "utf8"));
@@ -60,6 +66,7 @@ test("published runtime has an empty production dependency closure", async () =>
 
 test("production dependency graph excludes network, provider, and background-service APIs", async () => {
   const violations: string[] = [];
+  const encounteredRuntimeAdapterImports = new Set<string>();
   for (const path of await sourceFiles(productionRoot)) {
     const source = ts.createSourceFile(path, await readFile(path, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const displayPath = relative(repositoryRoot, path);
@@ -67,7 +74,12 @@ test("production dependency graph excludes network, provider, and background-ser
       const moduleName = importedModule(node);
       if (moduleName) {
         if (forbiddenBuiltinModules.has(moduleName)) {
-          violations.push(`${displayPath}:${line(source, node)} imports ${moduleName}`);
+          const importName = `${displayPath} imports ${moduleName}`;
+          if (explicitRuntimeAdapterImportAllowlist.has(importName)) {
+            encounteredRuntimeAdapterImports.add(importName);
+          } else {
+            violations.push(`${displayPath}:${line(source, node)} imports ${moduleName}`);
+          }
         } else if (!moduleName.startsWith("node:") && !moduleName.startsWith("./") && !moduleName.startsWith("../")) {
           violations.push(`${displayPath}:${line(source, node)} imports external runtime package ${moduleName}`);
         }
@@ -84,6 +96,7 @@ test("production dependency graph excludes network, provider, and background-ser
     });
   }
   assert.deepEqual(violations, []);
+  assert.deepEqual([...encounteredRuntimeAdapterImports].sort(), [...explicitRuntimeAdapterImportAllowlist].sort());
 });
 
 test("production runtime does not read provider credential environment variables", async () => {

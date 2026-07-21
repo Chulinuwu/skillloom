@@ -1,11 +1,16 @@
 import type { Command, Scope, ScopedTargetName, TargetName } from "../domain/types.js";
 import { UsageError } from "../domain/errors.js";
 import { parseLearningArguments } from "./learning-arguments.js";
+import { parseSetupArguments } from "./setup-arguments.js";
 
 export function parseArguments(argv: string[]): Command {
   const args = [...argv];
   const json = takeFlag(args, "--json");
   const command = args.shift();
+  const setupCommand = parseSetupArguments(command, args, json);
+  if (setupCommand) {
+    return setupCommand;
+  }
   const learningCommand = parseLearningArguments(command, args, { json });
   if (learningCommand) {
     return learningCommand;
