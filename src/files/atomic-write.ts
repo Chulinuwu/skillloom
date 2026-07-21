@@ -3,9 +3,12 @@ import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { syncDirectory } from "./durability.js";
 
-export async function atomicWriteFile(path: string, data: string | Buffer): Promise<void> {
+export type AtomicWriteOptions = {
+  mode?: number;
+};
+export async function atomicWriteFile(path: string, data: string | Buffer, options: AtomicWriteOptions = {}): Promise<void> {
   const tmp = join(dirname(path), `.tmp-${process.pid}-${randomUUID()}`);
-  await writeFile(tmp, data);
+  await writeFile(tmp, data, { mode: options.mode });
   const handle = await open(tmp, "r");
   try {
     await handle.sync();
@@ -21,6 +24,6 @@ export async function atomicWriteFile(path: string, data: string | Buffer): Prom
   }
 }
 
-export async function atomicWriteJson(path: string, value: unknown): Promise<void> {
-  await atomicWriteFile(path, `${JSON.stringify(value, null, 2)}\n`);
+export async function atomicWriteJson(path: string, value: unknown, options: AtomicWriteOptions = {}): Promise<void> {
+  await atomicWriteFile(path, `${JSON.stringify(value, null, 2)}\n`, options);
 }

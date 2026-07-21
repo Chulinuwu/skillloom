@@ -3,6 +3,7 @@ export type ScopedTargetName = "claude" | "codex" | "agents";
 export type RuntimeTargetName = "claude" | "codex";
 export type TargetName = ScopedTargetName | "generic";
 export type Scope = "project" | "user";
+export type SetupHubMode = "auto" | "local";
 export type TargetScope = Scope | "explicit";
 export type SkillloomMode = "manual" | "policy" | "hermes";
 type PromoteCommandBase = {
@@ -35,6 +36,9 @@ type GenericDoctorCommand = {
 };
 export type Command =
   | ({ command: "init"; root: string } & JsonOutput)
+  | ({ command: "setup"; target: "auto" | ScopedTargetName; hub: SetupHubMode; scope: Scope; yes: boolean } & JsonOutput)
+  | ({ command: "sync"; apply: boolean } & JsonOutput)
+  | ({ command: "bridge"; stdio: true } & JsonOutput)
   | ({ command: "capture"; source: string; base?: string; createdBy: "agent" | "human"; evidence: string[] } & JsonOutput)
   | ({ command: "validate"; candidateId: string } & JsonOutput)
   | ((ScopedPromoteCommand | GenericPromoteCommand) & JsonOutput)
