@@ -30,6 +30,24 @@ Copying a skill directory installs whatever is there at that moment. It does not
 
 Local-first means the policy, candidates, audit trail, backups, and locks live under the local `.skillloom/` store. Skillloom has no hosted control plane, account, telemetry service, or daemon. The host agent may still use a cloud model.
 
+## Optional Private Hub
+
+Optional private Hub sync can be added through Tailscale without changing the local-first boundary. The Hub service ID is `svc:skillloom`, but clients discover and use the MagicDNS URL `https://skillloom.<MagicDNSSuffix>`, never `https://svc:skillloom`.
+
+Bootstrap the Hub with the compose bundle in `hub/` using a reusable tagged Tailscale auth key, a Service host tag and approval for `svc:skillloom`, and Tailscale v1.92 or newer app capabilities. Do not enable Funnel. On Linux, precreate `hub/data` with mode `0700` and ownership for uid `1000`, or equivalent host ownership that lets the runtime image's `node` user read and write it. The backup user must be able to read it. The exact Docker Compose commands, backup, and restore procedure live in `hub/README.md`.
+
+Each client configures trust interactively:
+
+```bash
+skillloom setup --target auto --hub auto --scope user
+```
+
+Use `--yes` only for explicit noninteractive acceptance. `skillloom sync` imports available Hub records as a dry run, and `skillloom sync --apply` applies them transactionally.
+
+The same Skillloom plugin and MCP bridge work across Claude Code, Codex, and many machines. Each device keeps its own local `.skillloom` root, so offline and local-only workflows continue, and the Hub is not a shared mutable vault mount.
+
+This release does not include an Obsidian browser UI or direct Obsidian synchronization. Agents access the Brain through the authenticated MCP and HTTP surfaces. Do not point Obsidian Desktop, a network share, or a filesystem sync tool at the live Hub vault because those writes would bypass revision checks and audit records. Native Obsidian authoring requires the deferred Headless Sync and external-revision adapter described in `HUB_ARCHITECTURE.md`.
+
 ## Install
 
 ```bash

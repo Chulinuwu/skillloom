@@ -6,3 +6,15 @@ work/upstream/
 .lean-ctx/
 .omx/
 *-skillloom-*.tgz
+.env
+.env.*
+**/.env
+**/.env.*
+!hub/.env.example
+hub/*/**/.env.example
+.envrc
+.envrc.*
+**/.envrc
+**/.envrc.*
+hub/data/
+hub/tailscale-state/

@@ -1,0 +1,52 @@
+{
+  groups: {
+    "group:skillloom-contributors": ["replace-me@example.com"],
+    "group:skillloom-promoters": ["replace-me-promoter@example.com"],
+  },
+  tagOwners: {
+    "tag:skillloom-hub": ["autogroup:admin"],
+    "tag:skillloom-agent": ["autogroup:admin"],
+  },
+  grants: [
+    {
+      src: ["group:skillloom-contributors"],
+      dst: ["tag:skillloom-hub"],
+      ip: ["443"],
+      app: {
+        "skillloom.io/cap/skillloom": [
+          {
+            subject: "user:replace-me@example.com",
+            roles: ["reader", "contributor"],
+          },
+        ],
+      },
+    },
+    {
+      src: ["group:skillloom-promoters"],
+      dst: ["tag:skillloom-hub"],
+      ip: ["443"],
+      app: {
+        "skillloom.io/cap/skillloom": [
+          {
+            subject: "user:replace-me-promoter@example.com",
+            roles: ["reader", "contributor", "promoter"],
+          },
+        ],
+      },
+    },
+    {
+      src: ["tag:skillloom-agent"],
+      dst: ["tag:skillloom-hub"],
+      ip: ["443"],
+      app: {
+        "skillloom.io/cap/skillloom": [
+          {
+            subject: "node:skillloom-agent",
+            roles: ["reader", "contributor"],
+          },
+        ],
+      },
+    },
+  ],
+  ssh: [],
+}

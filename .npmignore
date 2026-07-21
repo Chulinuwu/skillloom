@@ -1,0 +1,10 @@
+.env
+.env.*
+**/.env
+**/.env.*
+!hub/.env.example
+hub/*/**/.env.example
+.envrc
+.envrc.*
+**/.envrc
+**/.envrc.*
