@@ -1,8 +1,8 @@
 # Skillloom
 
-![Skillloom weaving portable Agent Skills through validation and rollback](assets/skillloom-hero.webp)
+![Skillloom weaving a private second brain and portable Agent Skills](assets/skillloom-hero.webp)
 
-Local-first package manager and lifecycle control plane for versioned, auditable, and reversible Agent Skills across Claude Code and Codex.
+Private second brain and governed Agent Skill lifecycle for Claude Code, Codex, and every machine in your Tailnet.
 
 [![npm version](https://img.shields.io/npm/v/%40chulinxz%2Fskillloom.svg)](https://www.npmjs.com/package/@chulinxz/skillloom)
 [![CI](https://github.com/Chulinuwu/skillloom/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Chulinuwu/skillloom/actions/workflows/ci.yml)
@@ -12,11 +12,17 @@ Local-first package manager and lifecycle control plane for versioned, auditable
 
 ![Skillloom capture, validate, and promote demo](assets/demo.webp)
 
-Skillloom adapts the useful self-improvement loop from Hermes Agent to plugin lifecycle hooks while leaving conversations, tools, model routing, and execution inside the host agent.
+An agent solves a difficult problem on one machine. A week later, another agent hits the same problem on another machine and starts again from zero. The useful answer existed, but it was trapped in an old session.
 
-The host agent reviews completed work, drafts a focused Agent Skill candidate, and asks Skillloom to validate and promote it. Skillloom owns the safety boundary: immutable snapshots, deterministic trust findings, policy decisions, transactional installation, crash recovery, quarantine evidence, and rollback.
+Skillloom gives those agents a private second brain that survives sessions and travels across devices. Agents read and write structured Brain records through MCP. People can browse the same knowledge in a hosted Obsidian Web UI. Install the same plugin on another Tailnet machine, connect it to the Hub, and that machine can use the same Brain without sharing a mutable filesystem.
+
+Skills are part of that Brain, but they are not the whole Brain. A note can record what happened or why a decision was made. A skill is a reusable procedure that an agent may execute again. Skillloom keeps that distinction clear: knowledge can be captured as a Brain record, while a skill must pass validation, policy, and an auditable promotion process before it reaches Claude Code or Codex.
+
+The learning loop is adapted from Hermes Agent, but conversations, tools, model routing, and execution stay inside the host agent. Skillloom owns the durable layer: Brain records, immutable skill candidates, trust findings, installation checkpoints, recovery, and rollback.
 
 ## Why Skillloom?
+
+Chat history is a poor shared memory. It is tied to one session, full of temporary context, and awkward for another agent to search. Skillloom keeps bounded records such as notes, facts, decisions, sources, projects, and memories. It does not persist full transcripts.
 
 Copying a skill directory installs whatever is there at that moment. It does not preserve what the agent proposed, why it was accepted, what was scanned, which targets changed, or how to safely undo a partial install.
 
@@ -28,11 +34,13 @@ Copying a skill directory installs whatever is there at that moment. It does not
 | No durable history | Append-only journal and promotion records |
 | Manual cleanup after a bad update | Hash-protected rollback and crash recovery |
 
-Local-first means the policy, candidates, audit trail, backups, and locks live under the local `.skillloom/` store. Skillloom has no hosted control plane, account, telemetry service, or daemon. The host agent may still use a cloud model.
+Local-first means every device keeps its policy, candidates, audit trail, backups, and locks under its own `.skillloom/` store. Skillloom does not require an account, telemetry service, or vendor-hosted control plane. The optional Hub is hosted by you inside your Tailnet, and local workflows keep working when it is unavailable.
 
-## Optional Private Hub
+## A shared brain inside your Tailnet
 
-Optional private Hub sync can be added through Tailscale without changing the local-first boundary. The Hub service ID is `svc:skillloom`, but clients discover and use the MagicDNS URL `https://skillloom.<MagicDNSSuffix>`, never `https://svc:skillloom`.
+The private Hub turns independent Skillloom installations into one shared second brain. A laptop running Codex and a server running Claude Code can use it as long as they are in the same Tailnet and have the required grants. Future agent tools can connect through the same MCP or HTTP boundary. Each client still keeps a local store, so the Hub is a synchronization and access boundary rather than a network-mounted vault.
+
+The Hub service ID is `svc:skillloom`, but clients discover and use the MagicDNS URL `https://skillloom.<MagicDNSSuffix>`, never `https://svc:skillloom`.
 
 The plugin's `$setup-skillloom` workflow is the primary installer. To host the stack, export a reusable tagged `TS_AUTHKEY` locally, never into chat, and let the workflow run `skillloom host install`. It creates private state under `~/.skillloom/host`, starts Docker, and prints the generated tailnet policy path. An admin still owns the explicit policy and Service approval decisions. Do not enable Funnel.
 
@@ -48,20 +56,24 @@ The same Skillloom plugin and bundled MCP bridge work across Claude Code, Codex,
 
 The hosted stack includes a hardened Obsidian Web UI at `https://skillloom-obsidian.<MagicDNSSuffix>` on HTTPS port `443`; its internal container port is `3000`. The Skillloom vault is mounted read-only. Agents and users write through authenticated MCP or HTTP calls so revisions and audit records remain valid. Direct Obsidian, network-share, and filesystem-sync writes remain unsupported until the external-revision adapter exists.
 
-## Install
+## Quick start
 
-After installing the plugin, invoke `$setup-skillloom`. The bundled runner does not require a globally installed `skillloom` binary. A client can also be connected explicitly with a pasted credential-free Hub link:
+Install the Skillloom plugin on each Claude Code or Codex machine, start a new task, and invoke `$setup-skillloom`. The plugin bundles its setup runner and MCP bridge, so this path does not require a global `skillloom` binary.
 
-```bash
-skillloom setup --target auto --hub auto --hub-url https://skillloom.<MagicDNSSuffix> --scope user
-```
-
-Host lifecycle commands are idempotent:
+On the first host, export a tagged reusable Tailscale auth key in the local terminal, never in chat:
 
 ```bash
-skillloom host install
-skillloom host status
+export TS_AUTHKEY=<tagged-reusable-key>
 ```
+
+The setup workflow asks for consent, starts the private Docker stack, and prints the generated Tailscale policy path plus both URLs. On every additional machine, invoke the same skill and paste the credential-free Hub URL:
+
+- Hub API: `https://skillloom.<MagicDNSSuffix>` on HTTPS port `443`, internal port `8787`
+- Obsidian Web UI: `https://skillloom-obsidian.<MagicDNSSuffix>` on HTTPS port `443`, internal port `3000`
+
+No Docker application port is published to the LAN or internet. Tailscale Serve owns external HTTPS access. The Obsidian vault is read-only; agents write through authenticated Skillloom MCP or HTTP calls so revision and audit history remain valid.
+
+The CLI is optional for people who want direct terminal control:
 
 ```bash
 npm install --global @chulinxz/skillloom@0.2
@@ -174,13 +186,7 @@ skillloom recover-lock journal --yes
 
 ## Plugin installation
 
-Install the published CLI:
-
-```bash
-npm install --global @chulinxz/skillloom@0.2
-```
-
-For local development, clone the repository, run `npm ci && npm run build`, then use `npm link` to expose the same `skillloom` binary.
+The plugin is the recommended installation path because it bundles the setup skill, MCP bridge, learning skills, and lifecycle hooks. A global CLI install is optional. For local development, clone the repository and run `npm ci && npm run build` before adding its marketplace.
 
 Install for Claude Code from the repository root:
 
@@ -198,7 +204,7 @@ codex plugin add skillloom@skillloom-dev
 codex plugin list
 ```
 
-Both harnesses discover the same root `skills/` tree and `hooks/hooks.json`. Lifecycle hooks run only after the harness trusts the plugin. Start a new session or task after installation, update, or mode changes that affect startup context.
+Both harnesses discover the same root `skills/` tree, bundled MCP configuration, and `hooks/hooks.json`. Lifecycle hooks run only after the harness trusts the plugin. Start a new session or task after installation, then invoke `$setup-skillloom`. Do the same after an update or a mode change that affects startup context.
 
 The canonical adapters install skills to:
 
@@ -243,4 +249,5 @@ Validate the plugin skills directly when changing their instructions:
 python3 /path/to/skill-creator/scripts/quick_validate.py skills/autonomous-learning
 python3 /path/to/skill-creator/scripts/quick_validate.py skills/capture-learning
 python3 /path/to/skill-creator/scripts/quick_validate.py skills/curate-skills
+python3 /path/to/skill-creator/scripts/quick_validate.py skills/setup-skillloom
 ```
