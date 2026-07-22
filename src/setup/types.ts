@@ -24,7 +24,7 @@ export type HubReconcileRequest =
   | { root: string; apply: true; strictInitial: true };
 
 export interface HubSetupPort {
-  discover(root: string): Promise<HubSetupDiscovery>;
+  discover(root: string, hubUrl?: string): Promise<HubSetupDiscovery>;
   trust(root: string, discovery: Extract<HubSetupDiscovery, { mode: "connected" }>): Promise<{ trusted: true }>;
   verifyBrainRead(root: string): Promise<{ verified: true }>;
   reconcile(request: HubReconcileRequest): Promise<HubReconcileResult>;
@@ -65,19 +65,26 @@ export type ProcessResult = {
 
 export interface ProcessPort {
   findExecutable(name: string): Promise<string | null>;
-  run(executable: string, args: string[]): Promise<ProcessResult>;
+  run(executable: string, args: string[], environment?: NodeJS.ProcessEnv): Promise<ProcessResult>;
 }
 
 export type SetupRequest = {
   target: SetupTarget;
   hub: SetupHubMode;
+  hubUrl?: string;
   scope: Scope;
   yes: boolean;
+};
+
+export type SetupSurfaces = {
+  hub: { url: string; externalPort: 443 };
+  obsidian: { url: string; externalPort: 443; internalPort: 3000; access: "read-only" };
 };
 
 export type SetupResult = {
   command: "setup";
   hub: HubSetupDiscovery;
+  surfaces: SetupSurfaces | null;
   targets: HarnessInstallResult[];
   reconciled: HubReconcileResult | null;
 };

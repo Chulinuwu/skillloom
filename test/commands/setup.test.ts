@@ -8,13 +8,13 @@ test("setup command passes the parsed contract to the service", async () => {
   const service: SetupServicePort = {
     async setup(request) {
       requests.push(request);
-      return { command: "setup", hub: { mode: "local-only" }, targets: [], reconciled: null };
+      return { command: "setup", hub: { mode: "local-only" }, surfaces: null, targets: [], reconciled: null };
     },
     async sync() {
       throw new Error("unexpected sync");
     }
   };
 
-  await setupCommand({ command: "setup", target: "auto", hub: "auto", scope: "user", yes: true, json: true }, service);
-  assert.deepEqual(requests, [{ target: "auto", hub: "auto", scope: "user", yes: true }]);
+  await setupCommand({ command: "setup", target: "auto", hub: "auto", hubUrl: "https://skillloom.example.ts.net", scope: "user", yes: true, json: true }, service);
+  assert.deepEqual(requests, [{ target: "auto", hub: "auto", hubUrl: "https://skillloom.example.ts.net", scope: "user", yes: true }]);
 });

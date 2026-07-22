@@ -36,7 +36,8 @@ type GenericDoctorCommand = {
 };
 export type Command =
   | ({ command: "init"; root: string } & JsonOutput)
-  | ({ command: "setup"; target: "auto" | ScopedTargetName; hub: SetupHubMode; scope: Scope; yes: boolean } & JsonOutput)
+  | ({ command: "setup"; target: "auto" | ScopedTargetName; hub: SetupHubMode; hubUrl?: string; scope: Scope; yes: boolean } & JsonOutput)
+  | ({ command: "host"; action: "install" | "status"; yes: boolean } & JsonOutput)
   | ({ command: "sync"; apply: boolean } & JsonOutput)
   | ({ command: "bridge"; stdio: true } & JsonOutput)
   | ({ command: "capture"; source: string; base?: string; createdBy: "agent" | "human"; evidence: string[] } & JsonOutput)

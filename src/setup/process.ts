@@ -22,9 +22,9 @@ export class SystemProcessPort implements ProcessPort {
     return null;
   }
 
-  async run(executable: string, args: string[]) {
+  async run(executable: string, args: string[], environment?: NodeJS.ProcessEnv) {
     try {
-      const { stdout, stderr } = await execute(executable, args, { shell: false });
+      const { stdout, stderr } = await execute(executable, args, { shell: false, ...(environment ? { env: environment } : {}) });
       return { exitCode: 0, stdout, stderr };
     } catch (error) {
       if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "number") {

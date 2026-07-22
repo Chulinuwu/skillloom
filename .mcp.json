@@ -1,11 +1,13 @@
 {
   "mcpServers": {
     "skillloom": {
-      "command": "skillloom",
+      "command": "node",
       "args": [
+        "dist/cli/main.js",
         "bridge",
         "--stdio"
-      ]
+      ],
+      "cwd": "."
     }
   }
 }

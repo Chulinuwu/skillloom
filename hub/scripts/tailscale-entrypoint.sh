@@ -3,6 +3,8 @@ set -eu
 
 : "${SKILLLOOM_SERVE_SERVICE:=svc:skillloom}"
 : "${SKILLLOOM_SERVE_BACKEND:=http://127.0.0.1:8787}"
+: "${SKILLLOOM_OBSIDIAN_SERVE_SERVICE:=svc:skillloom-obsidian}"
+: "${SKILLLOOM_OBSIDIAN_SERVE_BACKEND:=http://127.0.0.1:3000}"
 : "${SKILLLOOM_APP_CAP:=skillloom.io/cap/skillloom}"
 
 /usr/local/bin/containerboot &
@@ -28,5 +30,11 @@ tailscale serve \
   --https=443 \
   --accept-app-caps="$SKILLLOOM_APP_CAP" \
   "$SKILLLOOM_SERVE_BACKEND"
+
+tailscale serve \
+  --yes \
+  --service="$SKILLLOOM_OBSIDIAN_SERVE_SERVICE" \
+  --https=443 \
+  "$SKILLLOOM_OBSIDIAN_SERVE_BACKEND"
 
 wait "$boot_pid"

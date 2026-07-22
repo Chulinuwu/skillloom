@@ -56,6 +56,9 @@ test("npm package contains the CLI and all portable skills", async () => {
     "skills/capture-learning/agents/openai.yaml",
     "skills/curate-skills/SKILL.md",
     "skills/curate-skills/agents/openai.yaml",
+    "skills/setup-skillloom/SKILL.md",
+    "skills/setup-skillloom/agents/openai.yaml",
+    "skills/setup-skillloom/scripts/skillloom.mjs",
     "README.md",
     "LICENSE"
   ]) {

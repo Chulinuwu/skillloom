@@ -9,7 +9,7 @@ export function parseSetupArguments(command: string | undefined, args: string[],
 }
 
 function parseSetup(args: string[], json: boolean): Extract<Command, { command: "setup" }> {
-  const parsed = parseOptions(args, new Set(["--yes"]), new Set(["--target", "--hub", "--scope"]));
+  const parsed = parseOptions(args, new Set(["--yes"]), new Set(["--target", "--hub", "--hub-url", "--scope"]));
   const target = parsed.values.get("--target") ?? "auto";
   if (target !== "auto" && target !== "claude" && target !== "codex" && target !== "agents") {
     throw new UsageError("--target must be auto, claude, codex, or agents");
@@ -17,7 +17,9 @@ function parseSetup(args: string[], json: boolean): Extract<Command, { command: 
   const hub = parsed.values.get("--hub") ?? "auto";
   if (!isSetupHubMode(hub)) throw new UsageError("--hub must be auto or local");
   const scope = parseScope(parsed.values.get("--scope") ?? "user");
-  return { command: "setup", target, hub, scope, yes: parsed.flags.has("--yes"), json };
+  const hubUrl = parsed.values.get("--hub-url");
+  if (hub === "local" && hubUrl) throw new UsageError("--hub-url cannot be combined with --hub local");
+  return { command: "setup", target, hub, ...(hubUrl ? { hubUrl } : {}), scope, yes: parsed.flags.has("--yes"), json };
 }
 
 function parseSync(args: string[], json: boolean): Extract<Command, { command: "sync" }> {

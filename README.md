@@ -34,7 +34,7 @@ Local-first means the policy, candidates, audit trail, backups, and locks live u
 
 Optional private Hub sync can be added through Tailscale without changing the local-first boundary. The Hub service ID is `svc:skillloom`, but clients discover and use the MagicDNS URL `https://skillloom.<MagicDNSSuffix>`, never `https://svc:skillloom`.
 
-Bootstrap the Hub with the compose bundle in `hub/` using a reusable tagged Tailscale auth key, a Service host tag and approval for `svc:skillloom`, and Tailscale v1.92 or newer app capabilities. Do not enable Funnel. On Linux, precreate `hub/data` with mode `0700` and ownership for uid `1000`, or equivalent host ownership that lets the runtime image's `node` user read and write it. The backup user must be able to read it. The exact Docker Compose commands, backup, and restore procedure live in `hub/README.md`.
+The plugin's `$setup-skillloom` workflow is the primary installer. To host the stack, export a reusable tagged `TS_AUTHKEY` locally, never into chat, and let the workflow run `skillloom host install`. It creates private state under `~/.skillloom/host`, starts Docker, and prints the generated tailnet policy path. An admin still owns the explicit policy and Service approval decisions. Do not enable Funnel.
 
 Each client configures trust interactively:
 
@@ -44,11 +44,24 @@ skillloom setup --target auto --hub auto --scope user
 
 Use `--yes` only for explicit noninteractive acceptance. `skillloom sync` imports available Hub records as a dry run, and `skillloom sync --apply` applies them transactionally.
 
-The same Skillloom plugin and MCP bridge work across Claude Code, Codex, and many machines. Each device keeps its own local `.skillloom` root, so offline and local-only workflows continue, and the Hub is not a shared mutable vault mount.
+The same Skillloom plugin and bundled MCP bridge work across Claude Code, Codex, and many machines without a separate global CLI install. Each device keeps its own local `.skillloom` root, so offline and local-only workflows continue, and the Hub is not a shared mutable vault mount.
 
-This release does not include an Obsidian browser UI or direct Obsidian synchronization. Agents access the Brain through the authenticated MCP and HTTP surfaces. Do not point Obsidian Desktop, a network share, or a filesystem sync tool at the live Hub vault because those writes would bypass revision checks and audit records. Native Obsidian authoring requires the deferred Headless Sync and external-revision adapter described in `HUB_ARCHITECTURE.md`.
+The hosted stack includes a hardened Obsidian Web UI at `https://skillloom-obsidian.<MagicDNSSuffix>` on HTTPS port `443`; its internal container port is `3000`. The Skillloom vault is mounted read-only. Agents and users write through authenticated MCP or HTTP calls so revisions and audit records remain valid. Direct Obsidian, network-share, and filesystem-sync writes remain unsupported until the external-revision adapter exists.
 
 ## Install
+
+After installing the plugin, invoke `$setup-skillloom`. The bundled runner does not require a globally installed `skillloom` binary. A client can also be connected explicitly with a pasted credential-free Hub link:
+
+```bash
+skillloom setup --target auto --hub auto --hub-url https://skillloom.<MagicDNSSuffix> --scope user
+```
+
+Host lifecycle commands are idempotent:
+
+```bash
+skillloom host install
+skillloom host status
+```
 
 ```bash
 npm install --global @chulinxz/skillloom@0.2

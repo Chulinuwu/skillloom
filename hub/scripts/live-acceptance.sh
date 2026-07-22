@@ -152,9 +152,9 @@ run_server_phase() {
   [ -f "$env_file" ] || fail "compose-env" "compose environment file is required on the Hub host"
 
   services="$(compose config --services)" || fail "compose-services" "could not inspect Compose services"
-  expected_services="$(printf '%s\n' skillloom-hub tailscale | LC_ALL=C sort)"
+  expected_services="$(printf '%s\n' obsidian skillloom-hub tailscale | LC_ALL=C sort)"
   actual_services="$(printf '%s\n' "$services" | LC_ALL=C sort)"
-  [ "$actual_services" = "$expected_services" ] || fail "compose-services" "expected only tailscale and skillloom-hub"
+  [ "$actual_services" = "$expected_services" ] || fail "compose-services" "expected only tailscale, skillloom-hub, and obsidian"
   record_check "compose-services"
 
   compose_config="$(compose config --no-interpolate)" || fail "compose-config" "could not render Compose configuration"
@@ -168,7 +168,7 @@ run_server_phase() {
 
   running="$(compose ps --status running --services)" || fail "compose-running" "could not inspect running services"
   actual_running="$(printf '%s\n' "$running" | LC_ALL=C sort)"
-  [ "$actual_running" = "$expected_services" ] || fail "compose-running" "both exact Compose services must be running"
+  [ "$actual_running" = "$expected_services" ] || fail "compose-running" "all exact Compose services must be running"
   record_check "compose-running"
 
   serve_status="$(compose exec -T tailscale tailscale serve status)" || fail "serve-private" "could not inspect Tailscale Serve"

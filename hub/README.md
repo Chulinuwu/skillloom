@@ -1,19 +1,31 @@
 # Skillloom Hub on Tailscale
 
-This compose bundle runs one private Hub for a tailnet. Tailscale is the only network owner. The Hub binds to `127.0.0.1:8787` inside the shared network namespace, and `tailscale serve` publishes the Tailscale Service `svc:skillloom` at `https://skillloom.<MagicDNSSuffix>` inside the tailnet only. Do not configure clients with `https://svc:skillloom`; `svc:skillloom` is the service identity, not the usable HTTPS discovery URL.
+This compose bundle runs one private Hub and one read-only Obsidian Web UI for a tailnet. Tailscale is the only network owner. The Hub binds to `127.0.0.1:8787` and Obsidian to `127.0.0.1:3000` inside the shared namespace. Tailscale Serve publishes `svc:skillloom` as `https://skillloom.<MagicDNSSuffix>` and `svc:skillloom-obsidian` as `https://skillloom-obsidian.<MagicDNSSuffix>`, both on HTTPS port `443` inside the tailnet only.
 
 ## Prerequisites
 
 - Docker Compose v2.
 - Tailscale container image v1.92.0 or newer.
 - A reusable tagged auth key allowed to advertise `tag:skillloom-hub`. Do not use an ephemeral key because the Hub must preserve its node identity across container restarts.
-- A Tailscale Service named `svc:skillloom`, approved for the tagged device.
+- Tailscale Services named `svc:skillloom` and `svc:skillloom-obsidian`, approved for the tagged device or covered by the example auto-approver policy.
 - Tailnet policy grants with `skillloom.io/cap/skillloom` app capabilities for the human users and tagged agents that should use the Hub.
 - On Linux bind mounts, precreate `hub/data` with mode `0700` and ownership for uid `1000`, or equivalent host ownership that lets the runtime image's `node` user read and write it. The backup user must also be able to read it.
 
 Do not enable Funnel for this service.
 
 ## Bootstrap
+
+The supported plugin path is:
+
+```sh
+export TS_AUTHKEY=<tagged-reusable-key>
+skillloom host install
+skillloom host status
+```
+
+The key is read from the process environment for first authentication and is not written to `~/.skillloom/host/host.env`. The command prints the generated policy path and both HTTPS URLs. Keep the key out of chat and shell history where possible.
+
+For manual repository deployment:
 
 1. Copy `hub/.env.example` to `hub/.env`.
 2. Replace `TS_AUTHKEY` with a fresh reusable tagged auth key.
@@ -46,7 +58,7 @@ RUN_NONCE=acceptance-20260721T120000Z
 HUB_URL=https://skillloom.<MagicDNSSuffix>
 ```
 
-Run the server phase from the Hub Docker host and repository root. It verifies the exact `tailscale` and `skillloom-hub` Compose services, private Serve configuration, MagicDNS HTTPS, backend isolation, and persistent Tailscale and Hub identities across restart:
+Run the server phase from the Hub Docker host and repository root. It verifies the exact `tailscale`, `skillloom-hub`, and `obsidian` Compose services, private Serve configuration, MagicDNS HTTPS, backend isolation, and persistent Tailscale and Hub identities across restart:
 
 ```sh
 SKILLLOOM_LIVE_ACCEPTANCE=1 \
@@ -138,7 +150,7 @@ skillloom sync --apply
 
 The same Skillloom plugin and MCP bridge work for Claude Code, Codex, and any number of client machines. Local `.skillloom` roots remain per-device, so offline and local-only workflows continue without a Hub connection. The Hub is not a shared mutable vault mount.
 
-The Hub currently exposes agent-facing MCP and HTTP APIs, not an Obsidian browser UI. Direct Obsidian Desktop, network-share, or filesystem-sync writes to the live vault are unsupported because they bypass revision and audit enforcement. Obsidian authoring remains a separate deferred synchronization adapter.
+The Hub exposes agent-facing MCP and HTTP APIs plus a hardened Obsidian browser surface. The Brain vault mount inside Obsidian is read-only, terminal and sudo access are disabled, sharing is disabled, and no container port is published on the host. Direct Obsidian Desktop, network-share, or filesystem-sync writes to the live vault remain unsupported because they bypass revision and audit enforcement. Native Obsidian authoring remains a deferred synchronization adapter.
 
 ## Identity model
 
@@ -148,6 +160,7 @@ Tailscale Serve strips spoofed incoming identity and app-capability headers befo
 
 - `hub/data` contains Hub state: brain Markdown, indexes, audit ledger, registry manifests, and signing keys.
 - `hub/tailscale-state` contains the node key and Tailscale state.
+- `hub/obsidian-config` contains the browser desktop profile. It does not contain a writable copy of the Brain vault.
 
 Both directories are intentionally ignored by git.
 

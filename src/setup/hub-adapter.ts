@@ -31,14 +31,15 @@ export class HubSetupAdapter implements HubSetupPort {
     private readonly stableApply?: LocalStableReleaseApplyPort
   ) {}
 
-  async discover(root: string): Promise<HubSetupDiscovery> {
+  async discover(root: string, hubUrl?: string): Promise<HubSetupDiscovery> {
     let preview: ConnectedHubSession;
     try {
       preview = await previewHubSession({
         root,
         clientVersion: this.clientVersion,
         createClient: this.createClient,
-        tailscaleStatus: this.tailscale
+        tailscaleStatus: this.tailscale,
+        ...(hubUrl === undefined ? {} : { developmentUrl: hubUrl })
       });
     } catch (error) {
       if (error instanceof HubUnavailableError) return { mode: "local-only" };

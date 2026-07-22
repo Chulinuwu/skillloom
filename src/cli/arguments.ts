@@ -2,6 +2,7 @@ import type { Command, Scope, ScopedTargetName, TargetName } from "../domain/typ
 import { UsageError } from "../domain/errors.js";
 import { parseLearningArguments } from "./learning-arguments.js";
 import { parseSetupArguments } from "./setup-arguments.js";
+import { parseHostArguments } from "./host-arguments.js";
 
 export function parseArguments(argv: string[]): Command {
   const args = [...argv];
@@ -11,6 +12,8 @@ export function parseArguments(argv: string[]): Command {
   if (setupCommand) {
     return setupCommand;
   }
+  const hostCommand = parseHostArguments(command, args, json);
+  if (hostCommand) return hostCommand;
   const learningCommand = parseLearningArguments(command, args, { json });
   if (learningCommand) {
     return learningCommand;

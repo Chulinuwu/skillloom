@@ -7,10 +7,16 @@
     "tag:skillloom-hub": ["autogroup:admin"],
     "tag:skillloom-agent": ["autogroup:admin"],
   },
+  autoApprovers: {
+    services: {
+      "svc:skillloom": ["tag:skillloom-hub"],
+      "svc:skillloom-obsidian": ["tag:skillloom-hub"],
+    },
+  },
   grants: [
     {
       src: ["group:skillloom-contributors"],
-      dst: ["tag:skillloom-hub"],
+      dst: ["svc:skillloom"],
       ip: ["443"],
       app: {
         "skillloom.io/cap/skillloom": [
@@ -23,7 +29,7 @@
     },
     {
       src: ["group:skillloom-promoters"],
-      dst: ["tag:skillloom-hub"],
+      dst: ["svc:skillloom"],
       ip: ["443"],
       app: {
         "skillloom.io/cap/skillloom": [
@@ -36,7 +42,7 @@
     },
     {
       src: ["tag:skillloom-agent"],
-      dst: ["tag:skillloom-hub"],
+      dst: ["svc:skillloom"],
       ip: ["443"],
       app: {
         "skillloom.io/cap/skillloom": [
@@ -46,6 +52,11 @@
           },
         ],
       },
+    },
+    {
+      src: ["group:skillloom-contributors", "group:skillloom-promoters"],
+      dst: ["svc:skillloom-obsidian"],
+      ip: ["443"],
     },
   ],
   ssh: [],

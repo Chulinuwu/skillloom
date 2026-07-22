@@ -7,6 +7,19 @@ export function formatOutput(value: unknown, json: boolean): string {
   if (isCandidate(value)) {
     return `${value.candidateId} ${value.state} ${value.metadata.name}\n`;
   }
+  if (isSetupResult(value)) {
+    const hub = value.hub.mode === "connected" ? value.hub.endpoint : "local-only";
+    const surfaces = value.surfaces
+      ? [`hub: ${value.surfaces.hub.url} (HTTPS ${value.surfaces.hub.externalPort})`, `obsidian: ${value.surfaces.obsidian.url} (HTTPS ${value.surfaces.obsidian.externalPort}, internal ${value.surfaces.obsidian.internalPort}, ${value.surfaces.obsidian.access})`]
+      : [];
+    return [`setup: ${hub}`, ...surfaces, ...value.targets.map((target) => `${target.target}: ${target.status}`), ""].join("\n");
+  }
+  if (isHostResult(value)) {
+    const surfaces = value.surfaces
+      ? [`hub: ${value.surfaces.hub.url} (HTTPS ${value.surfaces.hub.externalPort})`, `obsidian: ${value.surfaces.obsidian.url} (HTTPS ${value.surfaces.obsidian.externalPort}, internal ${value.surfaces.obsidian.internalPort}, ${value.surfaces.obsidian.access})`]
+      : [];
+    return [`host: ${value.status}`, ...surfaces, `policy: ${value.policyPath}`, ...value.nextActions.map((action) => `action: ${action}`), ""].join("\n");
+  }
   if (isConfig(value)) {
     return `mode: ${value.mode}\n`;
   }
@@ -45,6 +58,12 @@ export function formatOutput(value: unknown, json: boolean): string {
     return [`doctor: ${value.summary.ok} ok, ${value.summary.warnings} warning(s)`, ...checks, ""].join("\n");
   }
   return `${JSON.stringify(value)}\n`;
+}
+function isSetupResult(value: unknown): value is { hub: { mode: string; endpoint?: string }; surfaces: null | { hub: { url: string; externalPort: number }; obsidian: { url: string; externalPort: number; internalPort: number; access: string } }; targets: Array<{ target: string; status: string }> } {
+  return typeof value === "object" && value !== null && "command" in value && value.command === "setup" && "targets" in value && Array.isArray(value.targets);
+}
+function isHostResult(value: unknown): value is { status: string; policyPath: string; surfaces: null | { hub: { url: string; externalPort: number }; obsidian: { url: string; externalPort: number; internalPort: number; access: string } }; nextActions: string[] } {
+  return typeof value === "object" && value !== null && "command" in value && value.command === "host" && "nextActions" in value && Array.isArray(value.nextActions);
 }
 function isConfig(value: unknown): value is { mode: string } {
   return typeof value === "object" && value !== null && "mode" in value && typeof value.mode === "string" && "policy" in value;

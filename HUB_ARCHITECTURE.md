@@ -50,6 +50,7 @@ The final command name is an implementation detail, but the setup contract is no
 - discover the Hub without asking for its address
 - reconcile current releases before reporting success
 - verify brain read access
+- report the Hub and Obsidian MagicDNS URLs and their external and internal ports
 
 Zero configuration does not mean zero consent. Tailscale login, Service approval, plugin trust, and write or promotion grants remain explicit security decisions.
 
@@ -115,12 +116,12 @@ flowchart LR
         VAULT["Markdown vault"]
         INDEX["SQLite metadata, FTS, and audit"]
         REG["Content-addressed skill registry"]
-        SYNC["Optional Obsidian Headless Sync"]
+        OBS["Hardened read-only Obsidian Web UI"]
         EDGE --> API
         API --> VAULT
         API --> INDEX
         API --> REG
-        SYNC <--> VAULT
+        VAULT -->|read-only mount| OBS
     end
 
     B1 --> SVC
@@ -140,7 +141,7 @@ The existing plugin remains the single user-facing installation unit. It bundles
 - MCP configuration that starts the local Skillloom bridge over stdio.
 - Session hooks that reconcile releases and report degraded connectivity.
 
-The plugin does not start Docker, mutate tailnet policy, or create credentials during installation.
+The plugin's explicit setup skill may start Docker after consent. It never mutates tailnet policy or creates credentials; it writes a reviewable policy file and stops at the admin-controlled approval boundary.
 
 ### Local bridge
 
@@ -179,10 +180,13 @@ The Hub backend listens only on loopback in the Tailscale network namespace. Tai
 
 ### Obsidian
 
-Obsidian is a planned optional human authoring and synchronization surface, not the authorization or skill-promotion boundary. It is not implemented in the current Hub release, and the Hub does not expose an Obsidian browser UI.
+Obsidian is an optional human browsing surface, not the authorization or skill-promotion boundary. The current Hub release hosts a hardened browser desktop through the separate `svc:skillloom-obsidian` Tailscale Service.
 
 - The Markdown vault remains Obsidian-compatible.
-- A future Obsidian Headless Sync adapter may mirror the vault to native Obsidian clients.
+- The live Markdown vault is mounted read-only into Obsidian.
+- Browser access uses Tailnet HTTPS port `443`; Tailscale Serve proxies to internal HTTP port `3000`.
+- Terminal, sudo, desktop sharing, Funnel, and public container ports stay disabled.
+- A future external-revision adapter may enable audited authoring and native Obsidian clients.
 - Direct SMB, NFS, SSHFS, or Taildrive writes to the live vault are not supported.
 - The planned adapter must detect Obsidian changes as external revisions and index them with provenance before native authoring is supported.
 
@@ -510,8 +514,8 @@ The Tailscale and Hub containers share a network namespace. The Hub binds to loo
 
 ### Phase 3: Obsidian and operations
 
-- Optional Obsidian Headless Sync
-- External revision watcher
+- Hardened read-only Obsidian Web UI through a separate Tailscale Service
+- Optional audited Obsidian authoring adapter and external revision watcher remain future work
 - Snapshot backup and restore drill
 - Hub migration while preserving Service name and signing key
 - Multiple Hub backends only after storage and leadership semantics are defined
@@ -525,6 +529,7 @@ Live deployment acceptance is a separate gated operator-run workflow. Its server
 The design is considered implemented only when:
 
 - A Hub is bootstrapped once and advertised as `svc:skillloom`.
+- The same host advertises `svc:skillloom-obsidian`; its Brain mount is read-only and reachable only through Tailnet HTTPS port `443`.
 - Two clean devices in the same tailnet install Skillloom without entering Hub configuration.
 - Both devices discover the same Hub and receive the correct Tailscale-derived `grantedCapabilities`.
 - A note captured on device A is searchable from device B.

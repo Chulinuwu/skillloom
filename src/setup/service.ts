@@ -1,5 +1,6 @@
 import { UsageError } from "../domain/errors.js";
 import { checkpointSetupTarget, isSetupTargetCurrent, readSetupState } from "./state.js";
+import { resolveSetupSurfaces } from "./surfaces.js";
 import type {
   ConsentPort,
   HarnessInstallerPort,
@@ -30,7 +31,7 @@ export class SetupService implements SetupServicePort {
 
   async setup(request: SetupRequest): Promise<SetupResult> {
     const root = this.options.root ?? this.options.stateRoot;
-    const discovery: HubSetupDiscovery = request.hub === "local" ? { mode: "local-only" } : await this.hub.discover(root);
+    const discovery: HubSetupDiscovery = request.hub === "local" ? { mode: "local-only" } : await this.hub.discover(root, request.hubUrl);
     if (request.hub === "auto" && discovery.mode === "local-only") {
       throw new UsageError("Skillloom Hub was not reachable; rerun with --hub local for explicit local-only setup");
     }
@@ -40,10 +41,10 @@ export class SetupService implements SetupServicePort {
       await this.hub.verifyBrainRead(root);
       const reconciled = await this.hub.reconcile({ root, apply: true, strictInitial: true });
       const targets = await this.installTargets(request);
-      return { command: "setup", hub: discovery, targets, reconciled };
+      return { command: "setup", hub: discovery, surfaces: resolveSetupSurfaces(discovery), targets, reconciled };
     }
     const targets = await this.installTargets(request);
-    return { command: "setup", hub: discovery, targets, reconciled: null };
+    return { command: "setup", hub: discovery, surfaces: null, targets, reconciled: null };
   }
 
   async sync(apply: boolean) {

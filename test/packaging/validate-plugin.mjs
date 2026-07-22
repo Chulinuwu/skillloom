@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 const execute = promisify(execFile);
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const repository = "https://github.com/Chulinuwu/skillloom";
-const skillNames = ["autonomous-learning", "capture-learning", "curate-skills"];
+const skillNames = ["autonomous-learning", "capture-learning", "curate-skills", "setup-skillloom"];
 
 function invariant(condition, message) {
   if (!condition) {
@@ -71,7 +71,7 @@ async function validateManifests() {
   invariant(codex.skills === "./skills/", "Codex manifest must declare the shared skills root");
   invariant(codex.mcpServers === "./.mcp.json", "Codex manifest must reference the root MCP configuration");
   invariant(JSON.stringify(mcp) === JSON.stringify({
-    mcpServers: { skillloom: { command: "skillloom", args: ["bridge", "--stdio"] } }
+  mcpServers: { skillloom: { command: "node", args: ["dist/cli/main.js", "bridge", "--stdio"], cwd: "." } }
   }), "MCP configuration must use the local zero-secret stdio bridge");
   invariant(!("hooks" in codex), "Codex manifest must omit the currently unsupported hooks field");
   invariant(claudeMarketplace.name === "skillloom-dev" && claudeMarketplace.plugins?.[0]?.source === "./", "Claude development marketplace must use source ./");
@@ -93,7 +93,7 @@ async function validateSkills() {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
-  invariant(JSON.stringify(directories) === JSON.stringify(skillNames), "Claude and Codex must discover the same three skill directories");
+  invariant(JSON.stringify(directories) === JSON.stringify(skillNames), "Claude and Codex must discover the same skill directories");
 
   for (const name of skillNames) {
     const source = await readFile(join(root, "skills", name, "SKILL.md"), "utf8");
@@ -102,11 +102,16 @@ async function validateSkills() {
     invariant(metadata.get("name") === name, `${name} frontmatter name must match its directory`);
     invariant((metadata.get("description")?.length ?? 0) >= 120, `${name} needs a trigger-rich description`);
     invariant(openai.includes(`$${name}`), `${name} default prompt must explicitly mention the skill`);
-    invariant(/validat/iu.test(source) && /scan|finding/iu.test(source), `${name} must require validation and scan evidence`);
-    invariant(/rollback/iu.test(source) && /evidence|hash/iu.test(source), `${name} must preserve rollback evidence`);
+    if (name === "setup-skillloom") {
+      invariant(/TS_AUTHKEY/u.test(source) && /paste.*into chat/iu.test(source), `${name} must protect Tailscale credentials`);
+      invariant(/read-only/iu.test(source) && /HTTPS port 443/iu.test(source), `${name} must preserve the private Obsidian boundary`);
+    } else {
+      invariant(/validat/iu.test(source) && /scan|finding/iu.test(source), `${name} must require validation and scan evidence`);
+      invariant(/rollback/iu.test(source) && /evidence|hash/iu.test(source), `${name} must preserve rollback evidence`);
+    }
     if (name === "autonomous-learning") {
       invariant(/policy/iu.test(source) && /quarantin/iu.test(source) && /observe/iu.test(source), `${name} must enforce policy-gated learning evidence`);
-    } else {
+    } else if (name !== "setup-skillloom") {
       invariant(/approval/iu.test(source) && /promot/iu.test(source), `${name} must require explicit promotion approval`);
       invariant(/never promote autonomously/iu.test(source), `${name} must prohibit autonomous promotion`);
       invariant(!/Claude Code|Codex|MCP tool|computer use/iu.test(source), `${name} must remain harness-neutral`);

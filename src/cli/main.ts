@@ -19,6 +19,7 @@ import { journeyCommand } from "../commands/journey.js";
 import { bridgeCommand } from "../commands/bridge.js";
 import { setupCommand } from "../commands/setup.js";
 import { syncCommand } from "../commands/sync.js";
+import { hostCommand } from "../commands/host.js";
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   try {
@@ -46,6 +47,9 @@ async function run(command: ReturnType<typeof parseArguments>) {
   if (command.command === "bridge") {
     await bridgeCommand();
     return undefined;
+  }
+  if (command.command === "host") {
+    return await hostCommand(command);
   }
   if (command.command === "init") {
     return await initCommand(command);

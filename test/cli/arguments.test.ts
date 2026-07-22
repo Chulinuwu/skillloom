@@ -92,6 +92,21 @@ test("parses zero-config setup, sync, and bridge commands", () => {
     json: false
   });
 });
+test("parses explicit Hub links and host lifecycle commands", () => {
+  assert.deepEqual(parseArguments(["setup", "--hub-url", "https://skillloom.example.ts.net", "--yes"]), {
+    command: "setup",
+    target: "auto",
+    hub: "auto",
+    hubUrl: "https://skillloom.example.ts.net",
+    scope: "user",
+    yes: true,
+    json: false
+  });
+  assert.deepEqual(parseArguments(["host", "install", "--yes", "--json"]), { command: "host", action: "install", yes: true, json: true });
+  assert.deepEqual(parseArguments(["host", "status"]), { command: "host", action: "status", yes: false, json: false });
+  assert.throws(() => parseArguments(["setup", "--hub", "local", "--hub-url", "https://skillloom.example.ts.net"]), /cannot be combined/u);
+  assert.throws(() => parseArguments(["host", "status", "--yes"]), /does not accept/u);
+});
 test("setup rejects secret-bearing and endpoint override flags", () => {
   for (const flag of ["--url", "--token", "--vault", "--db"]) {
     assert.throws(() => parseArguments(["setup", flag, "value"]), new RegExp(`Unknown flag: ${flag}`, "u"));

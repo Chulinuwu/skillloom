@@ -9,15 +9,18 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     environment:
-      TS_AUTHKEY: ${TS_AUTHKEY:?set TS_AUTHKEY in .env}
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_AUTH_ONCE: "true"
       TS_HOSTNAME: ${TS_HOSTNAME:-skillloom-hub}
       TS_STATE_DIR: /var/lib/tailscale
       TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:---advertise-tags=tag:skillloom-hub}
       SKILLLOOM_SERVE_SERVICE: ${SKILLLOOM_SERVE_SERVICE:-svc:skillloom}
       SKILLLOOM_SERVE_BACKEND: ${SKILLLOOM_SERVE_BACKEND:-http://127.0.0.1:8787}
+      SKILLLOOM_OBSIDIAN_SERVE_SERVICE: ${SKILLLOOM_OBSIDIAN_SERVE_SERVICE:-svc:skillloom-obsidian}
+      SKILLLOOM_OBSIDIAN_SERVE_BACKEND: ${SKILLLOOM_OBSIDIAN_SERVE_BACKEND:-http://127.0.0.1:3000}
       SKILLLOOM_APP_CAP: ${SKILLLOOM_APP_CAP:-skillloom.io/cap/skillloom}
     volumes:
-      - ./tailscale-state:/var/lib/tailscale
+      - ${SKILLLOOM_TAILSCALE_STATE_DIR:-./tailscale-state}:/var/lib/tailscale
       - ./scripts/tailscale-entrypoint.sh:/usr/local/bin/skillloom-tailscale-entrypoint.sh:ro
     entrypoint: ["/usr/local/bin/skillloom-tailscale-entrypoint.sh"]
     healthcheck:
@@ -41,4 +44,24 @@ services:
       SKILLLOOM_HUB_DATA_DIR: /data
       SKILLLOOM_HUB_TRUSTED_PROXY: tailscale-serve
     volumes:
-      - ./data:/data
+      - ${SKILLLOOM_HUB_DATA_DIR:-./data}:/data
+  obsidian:
+    image: ${SKILLLOOM_OBSIDIAN_IMAGE:-lscr.io/linuxserver/obsidian:v1.12.7-ls139}
+    restart: unless-stopped
+    network_mode: service:tailscale
+    depends_on:
+      tailscale:
+        condition: service_healthy
+      skillloom-hub:
+        condition: service_healthy
+    environment:
+      PUID: ${SKILLLOOM_OBSIDIAN_PUID:-1000}
+      PGID: ${SKILLLOOM_OBSIDIAN_PGID:-1000}
+      TZ: ${TZ:-Asia/Bangkok}
+      HARDEN_DESKTOP: "true"
+      START_DOCKER: "false"
+      SELKIES_ENABLE_SHARING: "false"
+    shm_size: 1gb
+    volumes:
+      - ${SKILLLOOM_OBSIDIAN_CONFIG_DIR:-./obsidian-config}:/config
+      - ${SKILLLOOM_HUB_DATA_DIR:-./data}/brain/vault:/config/Documents/Skillloom:ro

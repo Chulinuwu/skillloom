@@ -21,6 +21,16 @@ test("compose exposes Hub only through the Tailscale service namespace", async (
   assert.doesNotMatch(compose, /^\s*expose:/mu);
   assert.doesNotMatch(compose, /funnel/iu);
 });
+test("compose exposes a hardened read-only Obsidian surface through a separate Tailscale service", async () => {
+  const [compose, entrypoint] = await Promise.all([read("hub/compose.yaml"), read("hub/scripts/tailscale-entrypoint.sh")]);
+  assert.match(compose, /lscr\.io\/linuxserver\/obsidian:v1\.12\.7-ls139/u);
+  assert.match(compose, /HARDEN_DESKTOP: "true"/u);
+  assert.match(compose, /START_DOCKER: "false"/u);
+  assert.match(compose, /SELKIES_ENABLE_SHARING: "false"/u);
+  assert.match(compose, /brain\/vault:\/config\/Documents\/Skillloom:ro/u);
+  assert.match(entrypoint, /--service="\$SKILLLOOM_OBSIDIAN_SERVE_SERVICE"/u);
+  assert.match(entrypoint, /SKILLLOOM_OBSIDIAN_SERVE_BACKEND/u);
+});
 
 test("tailscale entrypoint configures service serve with accepted app capabilities", async () => {
   const entrypoint = await read("hub/scripts/tailscale-entrypoint.sh");
@@ -43,10 +53,11 @@ test("deployment artifacts keep state persistent and private", async () => {
     read("hub/Dockerfile")
   ]);
 
-  assert.match(compose, /\.\/data:\/data/u);
-  assert.match(compose, /\.\/tailscale-state:\/var\/lib\/tailscale/u);
+  assert.match(compose, /SKILLLOOM_HUB_DATA_DIR:-\.\/data\}:\/data/u);
+  assert.match(compose, /SKILLLOOM_TAILSCALE_STATE_DIR:-\.\/tailscale-state\}:\/var\/lib\/tailscale/u);
   assert.match(ignore, /hub\/data\//u);
   assert.match(ignore, /hub\/tailscale-state\//u);
+  assert.match(ignore, /hub\/obsidian-config\//u);
   assert.match(dockerfile, /FROM node:24\.15\.0-bookworm-slim AS build/u);
   assert.match(dockerfile, /127\.0\.0\.1:8787\/healthz/u);
   assert.match(dockerfile, /USER node/u);
@@ -119,7 +130,7 @@ test("live acceptance harness separates server, remote actor, and aggregate phas
 test("server acceptance uses the exact Compose services and private Tailscale path", async () => {
   const script = await read("hub/scripts/live-acceptance.sh");
   assert.match(script, /docker compose -f "\$compose_file" --env-file "\$env_file"/u);
-  assert.match(script, /printf '%s\\n' skillloom-hub tailscale/u);
+  assert.match(script, /printf '%s\\n' obsidian skillloom-hub tailscale/u);
   assert.match(script, /compose config --services/u);
   assert.match(script, /compose ps --status running --services/u);
   assert.match(script, /tailscale serve status/u);

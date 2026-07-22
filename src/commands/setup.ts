@@ -10,6 +10,7 @@ export async function setupCommand(
   return await setup.setup({
     target: command.target,
     hub: command.hub,
+    ...(command.hubUrl === undefined ? {} : { hubUrl: command.hubUrl }),
     scope: command.scope,
     yes: command.yes
   });
