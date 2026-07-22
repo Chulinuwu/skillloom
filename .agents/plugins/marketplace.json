@@ -1,5 +1,6 @@
 {
   "name": "skillloom-dev",
+  "description": "Development marketplace for Skillloom private second brain",
   "interface": {
     "displayName": "Skillloom Dev"
   },
@@ -10,6 +11,7 @@
         "source": "url",
         "url": "./"
       },
+      "description": "Private second brain for human knowledge, agent memories, workflows, and governed portable Agent Skills.",
       "policy": {
         "installation": "AVAILABLE",
         "authentication": "ON_INSTALL"

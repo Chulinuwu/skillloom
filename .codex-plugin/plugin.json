@@ -1,7 +1,7 @@
 {
   "name": "skillloom",
   "version": "0.3.0",
-  "description": "Policy-gated self-learning for portable Agent Skills across Claude Code and Codex.",
+  "description": "Private second brain for human knowledge, agent memories, workflows, and governed portable Agent Skills.",
   "author": {
     "name": "Chulinuwu",
     "url": "https://github.com/Chulinuwu"
@@ -11,6 +11,9 @@
   "license": "MIT",
   "keywords": [
     "agent-skills",
+    "second-brain",
+    "obsidian",
+    "tailnet",
     "skills",
     "validation",
     "promotion",
@@ -21,8 +24,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Skillloom",
-    "shortDescription": "Policy-gated self-learning for portable Agent Skills",
-    "longDescription": "Capture reusable task evidence, validate immutable candidates, and choose manual, policy, or Hermes-style learning with quarantine and rollback evidence.",
+    "shortDescription": "Private second brain and governed Agent Skills",
+    "longDescription": "Connect Claude Code, Codex, and Tailnet machines to a shared Skillloom Brain for human knowledge, agent memories, workflows, read-only Obsidian browsing, and policy-gated skill promotion.",
     "developerName": "Chulinuwu",
     "category": "Developer Tools",
     "capabilities": [
@@ -31,7 +34,7 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Use $setup-skillloom to host or connect the private Hub and Obsidian surface.",
+      "Use $setup-skillloom to host or connect the private second brain.",
       "Use $capture-learning to preserve this reusable workflow safely.",
       "Use $curate-skills to review a managed skill before changing it.",
       "Codex lifecycle review is invoked: use $autonomous-learning after non-trivial work."

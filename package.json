@@ -1,7 +1,7 @@
 {
   "name": "@chulinxz/skillloom",
   "version": "0.3.0",
-  "description": "Local-first control plane for learning, scanning, promoting, and rolling back portable Agent Skills",
+  "description": "Private second brain for human knowledge, agent memories, workflows, and governed portable Agent Skills",
   "type": "module",
   "license": "MIT",
   "author": "Chulinuwu",
@@ -17,6 +17,9 @@
     "claude-code",
     "codex",
     "local-first",
+    "second-brain",
+    "obsidian",
+    "tailnet",
     "security",
     "rollback",
     "skill-management",

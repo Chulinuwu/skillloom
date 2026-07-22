@@ -68,9 +68,13 @@ async function validateManifests() {
   invariant(/node:\s*\["22\.16\.0", 24, 26\]/u.test(ci), "CI must test the runtime floor and supported Node.js releases");
   invariant(readme.includes("Node.js 22.16 or newer") && readme.includes("Node.js 22.16, 24, and 26"), "README runtime requirements must match package and CI contracts");
   invariant(packageJson.bin?.skillloom === "dist/cli/main.js", "package bin must expose dist/cli/main.js");
+  invariant(/private second brain/iu.test(packageJson.description), "package description must position Skillloom as a private second brain");
   invariant(claude.version === version && codex.version === version, "plugin versions must match package.json");
   invariant(claudeMarketplace.plugins?.[0]?.version === version, "Claude marketplace version must match package.json");
   invariant(claude.name === "skillloom" && codex.name === "skillloom", "plugin names must be skillloom");
+  invariant(/private second brain/iu.test(claude.description) && /private second brain/iu.test(codex.description), "plugin descriptions must position Skillloom as a private second brain");
+  invariant(/private second brain/iu.test(codex.interface.shortDescription), "Codex About short description must position Skillloom as a private second brain");
+  invariant(/human knowledge/iu.test(codex.interface.longDescription) && /Obsidian/iu.test(codex.interface.longDescription), "Codex About long description must cover unified Brain and Obsidian");
   invariant(claude.repository === repository && codex.repository === repository, "plugin repositories must match the public repository");
   invariant(claude.license === "MIT" && codex.license === "MIT" && packageJson.license === "MIT", "all packages must use MIT");
   invariant(!("skills" in claude) && !("hooks" in claude), "Claude manifest must use conventional root discovery");
@@ -110,8 +114,18 @@ async function validateSkills() {
     invariant((metadata.get("description")?.length ?? 0) >= 120, `${name} needs a trigger-rich description`);
     invariant(openai.includes(`$${name}`), `${name} default prompt must explicitly mention the skill`);
     if (name === "setup-skillloom") {
-      invariant(/TS_AUTHKEY/u.test(source) && /paste.*into chat/iu.test(source), `${name} must protect Tailscale credentials`);
-      invariant(/read-only/iu.test(source) && /HTTPS port 443/iu.test(source), `${name} must preserve the private Obsidian boundary`);
+      invariant(/Ask at most one role question/iu.test(source), `${name} must be role-first before setup side effects`);
+      invariant(/Main Hub/iu.test(source) && /Client Node/iu.test(source) && /This Machine Only/iu.test(source), `${name} must teach the three setup roles`);
+      invariant(/dynamic guidance sources/iu.test(source) && /allowlisted official docs or installed CLI help/iu.test(source), `${name} must rely on runtime guidance for external setup steps`);
+      invariant(/Never ask[\s\S]*Tailscale auth key[\s\S]*into chat/iu.test(source), `${name} must protect Tailscale credentials without requiring a literal variable name`);
+      invariant(/Do not teach a default auth-key, sidecar, or Tailscale Service setup/iu.test(source), `${name} must not teach default auth-key, sidecar, or service setup`);
+      invariant(/Auth keys and `svc:\*` Services are advanced/iu.test(source), `${name} must keep auth keys and service aliases advanced-only`);
+      invariant(/private Tailscale Serve from the host Tailscale session/iu.test(source), `${name} must teach private host Serve as the default main Hub path`);
+      invariant(/For Main Hub, run the single setup flow/iu.test(source) && /combined consent/iu.test(source), `${name} must teach one-flow Main Hub setup`);
+      invariant(!/```sh\n([^`]|`(?!``))*host install/iu.test(source), `${name} must not put host install in the default Main Hub command block`);
+      invariant(/host install` only for advanced\/manual recovery/iu.test(source), `${name} must keep host install as advanced or manual recovery only`);
+      invariant(/host identity/iu.test(source) && /HTTPS port 8443/iu.test(source) && /read-only/iu.test(source), `${name} must preserve the private Obsidian boundary`);
+      invariant(/not from guessed hostnames/iu.test(source), `${name} must report generated setup URLs instead of hardcoding them`);
     } else {
       invariant(/validat/iu.test(source) && /scan|finding/iu.test(source), `${name} must require validation and scan evidence`);
       invariant(/rollback/iu.test(source) && /evidence|hash/iu.test(source), `${name} must preserve rollback evidence`);
@@ -134,10 +148,13 @@ async function validateHook() {
   const stop = await readFile(join(root, "hooks", "stop.mjs"), "utf8");
   const hookConfig = await readFile(join(root, "hooks", "hooks.json"), "utf8");
   const forbidden = [/fetch\s*\(/u, /https?:\/\//u, /writeFile|appendFile|rename|unlink|\brm\b/u, /execFile|spawn/u];
+  const stopForbidden = [/fetch\s*\(/u, /https?:\/\//u, /appendFile|rename|unlink|\brm\b/u, /execFile|spawn/u];
   invariant(config.includes('../mode-profile.mjs') && !config.includes("../dist/"), "Hooks must use the build-independent canonical mode profile");
   invariant(source.includes("readFile(skillPath"), "SessionStart must read capture metadata locally");
   invariant(forbidden.every((pattern) => !pattern.test(source)), "SessionStart must not mutate files or use network/process adapters");
-  invariant(forbidden.every((pattern) => !pattern.test(stop)), "Stop must not mutate files or use network/process adapters");
+  invariant(stopForbidden.every((pattern) => !pattern.test(stop)), "Stop must not use network/process/destructive adapters");
+  invariant(stop.includes("\".skillloom\"") && stop.includes("\"learning\"") && stop.includes("writeJsonIfAbsent"), "Stop may only create bounded local learning checkpoints");
+  invariant(stop.includes("{ flag: \"wx\"") && stop.includes("0o600"), "Stop learning checkpoints must be create-once and private");
   invariant(hookConfig.includes('"SessionStart"') && hookConfig.includes('"Stop"'), "Plugin hooks must declare SessionStart and Stop");
   invariant(stop.includes("stop_hook_active") && stop.includes("$autonomous-learning"), "Stop must prevent review loops and request autonomous-learning");
   invariant(stop.includes("exactly one bounded outcome") && stop.includes("do not claim a central write succeeded"), "Stop must request bounded curation without false central-write claims");

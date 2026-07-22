@@ -1,13 +1,13 @@
 {
   "name": "skillloom-dev",
-  "description": "Development marketplace for Skillloom",
+  "description": "Development marketplace for Skillloom private second brain",
   "owner": {
     "name": "Chulinuwu"
   },
   "plugins": [
     {
       "name": "skillloom",
-      "description": "Policy-gated self-learning for portable Agent Skills across Claude Code and Codex.",
+      "description": "Private second brain for human knowledge, agent memories, workflows, and governed portable Agent Skills.",
       "version": "0.3.0",
       "source": "./",
       "author": {
