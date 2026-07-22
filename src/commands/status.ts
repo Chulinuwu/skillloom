@@ -7,6 +7,7 @@ import { listOperations } from "../store/operations.js";
 import { listPromotions } from "../store/promotions.js";
 import { readConfig } from "../config/service.js";
 import { listLearningEvents } from "../store/learning.js";
+import { modeProfileFor } from "../config/mode-profile.js";
 
 export async function statusCommand(_command: Extract<Command, { command: "status" }>, projectRoot = process.cwd()) {
   const operations = (await listOperations(projectRoot)).filter((operation) => operation.status !== "completed");
@@ -23,8 +24,10 @@ export async function statusCommand(_command: Extract<Command, { command: "statu
   const lockRecovery = lock.state === "stale" && lock.operationId
     ? recovery.find((item) => item.operationId === lock.operationId)?.recoveryCommand
     : null;
+  const mode = (await readConfig(projectRoot))?.mode ?? "manual";
   return {
-    mode: (await readConfig(projectRoot))?.mode ?? "manual",
+    mode,
+    automation: modeProfileFor(mode),
     learning: await listLearningEvents(projectRoot),
     candidates: await listCandidates(projectRoot),
     promotions: await listPromotions(projectRoot),

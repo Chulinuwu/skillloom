@@ -1,3 +1,4 @@
+import type { ModeProfile } from "../config/mode-profile.js";
 import type { DoctorReport } from "../domain/types.js";
 
 export function formatOutput(value: unknown, json: boolean): string {
@@ -21,7 +22,7 @@ export function formatOutput(value: unknown, json: boolean): string {
     return [`host: ${value.status}`, ...surfaces, `policy: ${value.policyPath}`, ...value.nextActions.map((action) => `action: ${action}`), ""].join("\n");
   }
   if (isConfig(value)) {
-    return `mode: ${value.mode}\n`;
+    return [`mode: ${value.mode}`, formatAutomation(value.automation), ""].join("\n");
   }
   if (isLearningEvent(value)) {
     return `${value.eventId} ${value.outcome}\n`;
@@ -31,7 +32,7 @@ export function formatOutput(value: unknown, json: boolean): string {
       `operation ${operation.operationId}: ${operation.phase} (${operation.status}) action: ${operation.recoveryAction}`
     );
     const lock = value.lock.state === "unlocked" ? "lock: unlocked" : `lock: ${value.lock.state} action: ${value.lock.action}`;
-    return [`mode: ${value.mode}`, `learning: ${value.learning.length}`, `candidates: ${value.candidates.length}`, `promotions: ${value.promotions.length}`, `events: ${value.events.length}`, ...operations, lock, ""].join("\n");
+    return [`mode: ${value.mode}`, formatAutomation(value.automation), `learning: ${value.learning.length}`, `candidates: ${value.candidates.length}`, `promotions: ${value.promotions.length}`, `events: ${value.events.length}`, ...operations, lock, ""].join("\n");
   }
   if (isPromotion(value)) {
     return `${value.promotionId} ${value.result} ${value.targets.length} target(s)\n`;
@@ -65,8 +66,8 @@ function isSetupResult(value: unknown): value is { hub: { mode: string; endpoint
 function isHostResult(value: unknown): value is { status: string; policyPath: string; surfaces: null | { hub: { url: string; externalPort: number }; obsidian: { url: string; externalPort: number; internalPort: number; access: string } }; nextActions: string[] } {
   return typeof value === "object" && value !== null && "command" in value && value.command === "host" && "nextActions" in value && Array.isArray(value.nextActions);
 }
-function isConfig(value: unknown): value is { mode: string } {
-  return typeof value === "object" && value !== null && "mode" in value && typeof value.mode === "string" && "policy" in value;
+function isConfig(value: unknown): value is { mode: string; automation: ModeProfile } {
+  return typeof value === "object" && value !== null && "mode" in value && typeof value.mode === "string" && "policy" in value && "automation" in value && isModeProfile(value.automation);
 }
 function isLearningEvent(value: unknown): value is { eventId: string; outcome: string } {
   return typeof value === "object" && value !== null && "eventId" in value && typeof value.eventId === "string" && "outcome" in value && typeof value.outcome === "string";
@@ -89,11 +90,36 @@ function isStatus(value: unknown): value is {
   promotions: unknown[];
   learning: unknown[];
   mode: string;
+  automation: ModeProfile;
   events: unknown[];
   operations: { operationId: string; phase: string; status: string; recoveryAction: string }[];
   lock: { state: string; action?: string };
 } {
-  return typeof value === "object" && value !== null && "candidates" in value && "promotions" in value && "learning" in value && "mode" in value && "events" in value && "operations" in value && "lock" in value;
+  return typeof value === "object" && value !== null && "candidates" in value && "promotions" in value && "learning" in value && "mode" in value && "automation" in value && isModeProfile(value.automation) && "events" in value && "operations" in value && "lock" in value;
+}
+
+function isModeProfile(value: unknown): value is ModeProfile {
+  if (typeof value !== "object" || value === null || !("reviewTrigger" in value) || !("brainCapture" in value) || !("retrieval" in value) || !("promotion" in value) || !("hostLifecycle" in value)) {
+    return false;
+  }
+  const hosts = value.hostLifecycle;
+  return (value.reviewTrigger === "manual" || value.reviewTrigger === "task-end")
+    && (value.brainCapture === "manual" || value.brainCapture === "auto-curated")
+    && (value.retrieval === "explicit" || value.retrieval === "auto-bounded")
+    && (value.promotion === "manual" || value.promotion === "policy")
+    && typeof hosts === "object"
+    && hosts !== null
+    && "claude" in hosts
+    && "codex" in hosts
+    && "agents" in hosts
+    && (hosts.claude === "automatic" || hosts.claude === "invoked")
+    && (hosts.codex === "automatic" || hosts.codex === "invoked")
+    && (hosts.agents === "automatic" || hosts.agents === "invoked");
+}
+
+function formatAutomation(profile: ModeProfile): string {
+  const hosts = Object.entries(profile.hostLifecycle).map(([host, lifecycle]) => `${host}:${lifecycle}`).join(",");
+  return `automation: review=${profile.reviewTrigger} brain=${profile.brainCapture} retrieval=${profile.retrieval} promotion=${profile.promotion} hosts=${hosts}`;
 }
 function isPromotion(value: unknown): value is { promotionId: string; result: string; targets: unknown[] } {
   return typeof value === "object" && value !== null && "promotionId" in value && "targets" in value;

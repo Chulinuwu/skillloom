@@ -21,6 +21,8 @@ test("status reports manual defaults without creating a store", async () => {
   const root = await tempDir("skillloom-status-");
   const status = await statusCommand({ command: "status", json: true }, root);
   assert.equal(status.mode, "manual");
+  assert.equal(status.automation.retrieval, "explicit");
+  assert.equal(status.automation.hostLifecycle.codex, "invoked");
   await assert.rejects(() => stat(join(root, ".skillloom")), { code: "ENOENT" });
 });
 

@@ -9,7 +9,7 @@ if (input && config?.mode === "hermes" && input.stop_hook_active !== true) {
   if (counted === null || counted >= config.minToolCalls) {
     process.stdout.write(`${JSON.stringify({
       decision: "block",
-      reason: "Skillloom Hermes review is due. Use $autonomous-learning now. Record a concise no-op, memory, skill-create, or skill-patch decision with skillloom observe. For a reusable procedure, capture and validate a candidate, then use skillloom promote --policy. A rejected policy decision stays quarantined. Do not persist the transcript or credentials."
+      reason: "Skillloom Hermes automatic curation is due. Use $autonomous-learning now and choose exactly one bounded outcome: no-op, memory, skill-create, or skill-patch. A memory outcome searches before writing, performs at most one authenticated brain_capture, brain_update, or brain_link mutation, then records skillloom observe --outcome memory. If the Hub is unavailable, record only the local observation and do not claim a central write succeeded. Reusable procedures still require capture, validation, and skillloom promote --policy; rejected candidates stay quarantined. Never persist transcripts or credentials."
     })}\n`);
   }
 }

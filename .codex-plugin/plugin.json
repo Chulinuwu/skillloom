@@ -34,7 +34,7 @@
       "Use $setup-skillloom to host or connect the private Hub and Obsidian surface.",
       "Use $capture-learning to preserve this reusable workflow safely.",
       "Use $curate-skills to review a managed skill before changing it.",
-      "Use $autonomous-learning when Skillloom requests a post-task review."
+      "Codex lifecycle review is invoked: use $autonomous-learning after non-trivial work."
     ],
     "websiteURL": "https://github.com/Chulinuwu/skillloom"
   }

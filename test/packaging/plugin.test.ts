@@ -30,6 +30,27 @@ test("SessionStart emits a safe static context when skill metadata is unavailabl
     await rm(missingRoot, { recursive: true, force: true });
   }
 });
+test("SessionStart emits bounded automatic recall context for Hermes", async () => {
+  const project = await mkdtemp(join(tmpdir(), "skillloom-hook-hermes-"));
+  try {
+    await mkdir(join(project, ".skillloom"));
+    await writeFile(join(project, ".skillloom", "config.json"), JSON.stringify({ mode: "hermes", hermes: { minToolCalls: 3 } }));
+    const { stdout, stderr } = await execute(process.execPath, [join(root, "hooks/session-start.mjs")], {
+      cwd: project,
+      env: { ...process.env, CLAUDE_PLUGIN_ROOT: root }
+    });
+    const output = JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } };
+    const context = output.hookSpecificOutput.additionalContext;
+    assert.equal(stderr, "");
+    assert.ok(context.length <= 500, `Hermes context is ${context.length} characters`);
+    assert.match(context, /bounded Brain recall/u);
+    assert.match(context, /high-confidence/u);
+    assert.match(context, /Continue if Hub unavailable/u);
+    assert.match(context, /Codex and agents require invocation/u);
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
 test("npm package contains the CLI and all portable skills", async () => {
   const { stdout, stderr } = await execute("npm", ["pack", "--json", "--dry-run", "--ignore-scripts"], {
     cwd: root,
@@ -50,6 +71,8 @@ test("npm package contains the CLI and all portable skills", async () => {
     "hub/policy.example.hujson",
     "hub/scripts/live-acceptance.sh",
     "hooks/hooks.json",
+    "mode-profile.d.mts",
+    "mode-profile.mjs",
     "skills/autonomous-learning/SKILL.md",
     "skills/autonomous-learning/agents/openai.yaml",
     "skills/capture-learning/SKILL.md",

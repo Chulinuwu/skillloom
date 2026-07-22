@@ -12,7 +12,11 @@ test("Hermes Stop blocks once when review cadence is met", async () => {
   const project = await hermesProject();
   const first = await runStop({ cwd: project, tool_count: 3, stop_hook_active: false });
   assert.equal(JSON.parse(first).decision, "block");
-  assert.match(JSON.parse(first).reason, /\$autonomous-learning/u);
+  const reason = JSON.parse(first).reason as string;
+  assert.match(reason, /\$autonomous-learning/u);
+  assert.match(reason, /exactly one bounded outcome/u);
+  assert.match(reason, /brain_capture, brain_update, or brain_link/u);
+  assert.match(reason, /do not claim a central write succeeded/u);
   assert.equal(await runStop({ cwd: project, tool_count: 3, stop_hook_active: true }), "");
 });
 

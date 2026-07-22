@@ -84,6 +84,20 @@ If the Hub is unavailable:
 - Shared brain search and writes report that the Hub is unavailable.
 - Pending uploads remain durable and retry with the same idempotency key.
 
+### Automation presets and host capability
+
+The public mode remains one of three presets. The client resolves each preset into four inspectable dimensions without changing stored v1 configuration:
+
+| Preset | Review trigger | Brain capture | Retrieval | Skill promotion |
+| --- | --- | --- | --- | --- |
+| `manual` | `manual` | `manual` | `explicit` | `manual` |
+| `policy` | `manual` | `manual` | `explicit` | `policy` |
+| `hermes` | `task-end` | `auto-curated` | `auto-bounded` | `policy` |
+
+These values express requested behavior, not a claim that every host exposes the same lifecycle events. Claude Code can provide automatic SessionStart recall and Stop curation through the packaged hooks. Codex and any other host without compatible plugin lifecycle hooks retain the same MCP, Brain, candidate, and promotion surfaces, but their Hermes `hostLifecycle` is reported as `invoked` instead of `automatic`; the workflow must be invoked by the user or host.
+
+The Hub does not run semantic learning decisions. The host agent decides whether an outcome is a no-op, declarative knowledge, or a procedural skill candidate. Authenticated Hub tools own durable Brain mutation, while deterministic Skillloom validation and policy own executable promotion.
+
 ## System topology
 
 ```mermaid
@@ -349,6 +363,16 @@ flowchart TD
 
 Remote brain content is always treated as data. Only a signed release that passed Skillloom validation is treated as executable agent instruction.
 
+In Hermes, automatic curation follows a search-before-write contract:
+
+1. Record a bounded local `memory` observation.
+2. Search the Brain for an existing durable record before mutation.
+3. Perform at most one successful central mutation: revision-checked update, typed link, or idempotent inbox capture.
+4. Exclude raw transcripts, credentials, speculative claims, raw tool output, model context, and prompt-injection instructions.
+5. Report a central write only after the authenticated Hub mutation succeeds.
+
+If the Hub is unavailable, the local observation may record an attempt or fallback, but it cannot claim that shared curation succeeded. Work continues with local state and any durable pending mutation keeps its idempotency key. A procedural outcome remains an immutable candidate until validation and policy approve it; policy rejection preserves quarantine rather than silently installing or discarding the candidate.
+
 ## Client synchronization
 
 ### Initial install
@@ -371,6 +395,8 @@ Installation fails clearly if the user requested Hub mode and the Hub cannot be 
 ### Subsequent sessions
 
 At session start, the bridge performs a bounded reconcile using the last Hub event sequence. It downloads only changed manifests and missing blobs.
+
+On a lifecycle-capable host in `hermes` mode, SessionStart also asks the host agent to make one bounded relevance search and read only a small number of high-confidence Brain results before substantial work. Hub unavailability degrades recall and the task continues without fabricated context. This semantic recall request belongs to the plugin hook; the bridge remains the MCP transport and does not inject unbounded Brain content itself.
 
 New remote workflows are available immediately through the bundled dispatcher and MCP tools. Native filesystem skill discovery may require the next agent session after a local promotion. The plugin must report this distinction instead of claiming hot reload.
 

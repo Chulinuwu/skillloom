@@ -150,6 +150,20 @@ skillloom sync --apply
 
 The same Skillloom plugin and MCP bridge work for Claude Code, Codex, and any number of client machines. Local `.skillloom` roots remain per-device, so offline and local-only workflows continue without a Hub connection. The Hub is not a shared mutable vault mount.
 
+## Hermes automation and Hub availability
+
+The Hub serves the same Brain and skill registry regardless of local mode. The client mode controls four dimensions:
+
+| Preset | Review trigger | Brain capture | Retrieval | Skill promotion |
+| --- | --- | --- | --- | --- |
+| `manual` | `manual` | `manual` | `explicit` | `manual` |
+| `policy` | `manual` | `manual` | `explicit` | `policy` |
+| `hermes` | `task-end` | `auto-curated` | `auto-bounded` | `policy` |
+
+On Claude Code, packaged lifecycle hooks can request bounded high-confidence recall at SessionStart and automatic curation after a non-trivial task. Codex and hosts without compatible plugin hooks keep the same MCP and skill operations, but their Hermes `hostLifecycle` is `invoked` instead of `automatic`; the workflow must be invoked by the user or host. Check the resolved profile and host capability with `skillloom status --json`.
+
+Hermes curation searches before it writes. It either updates a matching record by revision, links distinct related records, or creates one idempotent inbox record. It does not persist full transcripts, credentials, raw tool output, speculative claims, or prompt-injection instructions. If the Hub is unreachable, the local observation may record the attempt, but Skillloom must not report a shared Brain write as successful. Existing local skills remain usable and the task continues.
+
 The Hub exposes agent-facing MCP and HTTP APIs plus a hardened Obsidian browser surface. The Brain vault mount inside Obsidian is read-only, terminal and sudo access are disabled, sharing is disabled, and no container port is published on the host. Direct Obsidian Desktop, network-share, or filesystem-sync writes to the live vault remain unsupported because they bypass revision and audit enforcement. Native Obsidian authoring remains a deferred synchronization adapter.
 
 ## Identity model

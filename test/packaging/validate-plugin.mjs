@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { execFile } from "node:child_process";
-import { access, lstat, readFile, readdir } from "node:fs/promises";
+import { access, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -91,6 +92,7 @@ async function validateManifests() {
   invariant(codex.interface.defaultPrompt.some((prompt) => prompt.includes("$capture-learning")), "Codex prompts must mention $capture-learning");
   invariant(codex.interface.defaultPrompt.some((prompt) => prompt.includes("$curate-skills")), "Codex prompts must mention $curate-skills");
   invariant(codex.interface.defaultPrompt.some((prompt) => prompt.includes("$autonomous-learning")), "Codex prompts must mention $autonomous-learning");
+  invariant(codex.interface.defaultPrompt.some((prompt) => prompt.includes("lifecycle review is invoked")), "Codex prompts must report lifecycle review as invoked");
 }
 
 async function validateSkills() {
@@ -116,6 +118,8 @@ async function validateSkills() {
     }
     if (name === "autonomous-learning") {
       invariant(/policy/iu.test(source) && /quarantin/iu.test(source) && /observe/iu.test(source), `${name} must enforce policy-gated learning evidence`);
+      invariant(/brain_search/u.test(source) && /brain_capture/u.test(source) && /brain_update/u.test(source) && /brain_link/u.test(source), `${name} must define search-before-write Brain curation`);
+      invariant(/at most one successful central Brain mutation/iu.test(source) && /central curation did not succeed/iu.test(source), `${name} must bound central mutations and prevent false success`);
     } else if (name !== "setup-skillloom") {
       invariant(/approval/iu.test(source) && /promot/iu.test(source), `${name} must require explicit promotion approval`);
       invariant(/never promote autonomously/iu.test(source), `${name} must prohibit autonomous promotion`);
@@ -125,15 +129,18 @@ async function validateSkills() {
 }
 
 async function validateHook() {
+  const config = await readFile(join(root, "hooks", "config.mjs"), "utf8");
   const source = await readFile(join(root, "hooks", "session-start.mjs"), "utf8");
   const stop = await readFile(join(root, "hooks", "stop.mjs"), "utf8");
   const hookConfig = await readFile(join(root, "hooks", "hooks.json"), "utf8");
   const forbidden = [/fetch\s*\(/u, /https?:\/\//u, /writeFile|appendFile|rename|unlink|\brm\b/u, /execFile|spawn/u];
+  invariant(config.includes('../mode-profile.mjs') && !config.includes("../dist/"), "Hooks must use the build-independent canonical mode profile");
   invariant(source.includes("readFile(skillPath"), "SessionStart must read capture metadata locally");
   invariant(forbidden.every((pattern) => !pattern.test(source)), "SessionStart must not mutate files or use network/process adapters");
   invariant(forbidden.every((pattern) => !pattern.test(stop)), "Stop must not mutate files or use network/process adapters");
   invariant(hookConfig.includes('"SessionStart"') && hookConfig.includes('"Stop"'), "Plugin hooks must declare SessionStart and Stop");
   invariant(stop.includes("stop_hook_active") && stop.includes("$autonomous-learning"), "Stop must prevent review loops and request autonomous-learning");
+  invariant(stop.includes("exactly one bounded outcome") && stop.includes("do not claim a central write succeeded"), "Stop must request bounded curation without false central-write claims");
 
   const { stdout, stderr } = await execute(process.execPath, [join(root, "hooks", "session-start.mjs")], {
     env: { ...process.env, CLAUDE_PLUGIN_ROOT: root }
@@ -145,6 +152,22 @@ async function validateHook() {
   const context = output.hookSpecificOutput?.additionalContext;
   invariant(typeof context === "string" && context.length > 0 && context.length <= 500, "SessionStart additionalContext must be small");
   invariant(context.includes("$capture-learning") && context.includes("manual mode"), "SessionStart must default to a manual capture context");
+  const fixture = await mkdtemp(join(tmpdir(), "skillloom-validate-hermes-"));
+  try {
+    await mkdir(join(fixture, ".skillloom"));
+    await writeFile(join(fixture, ".skillloom", "config.json"), JSON.stringify({ mode: "hermes", hermes: { minToolCalls: 3 } }));
+    const hermes = await execute(process.execPath, [join(root, "hooks", "session-start.mjs")], {
+      cwd: fixture,
+      env: { ...process.env, CLAUDE_PLUGIN_ROOT: root }
+    });
+    invariant(hermes.stderr === "", "Hermes SessionStart must not write diagnostics to stderr");
+    const hermesContext = JSON.parse(hermes.stdout).hookSpecificOutput?.additionalContext;
+    invariant(typeof hermesContext === "string" && hermesContext.length <= 500, "Hermes SessionStart must stay within the 500-character budget");
+    invariant(["bounded Brain recall", "high-confidence", "Continue if Hub unavailable"].every((phrase) => hermesContext.includes(phrase)), "Hermes SessionStart must request bounded recall and safe Hub fallback");
+    invariant(hermesContext.includes("Codex and agents require invocation"), "Hermes SessionStart must report unsupported host lifecycle degradation");
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
 }
 
 async function validateFiles() {
@@ -157,6 +180,8 @@ async function validateFiles() {
     "hooks/hooks.json",
     "hooks/session-start.mjs",
     "hooks/stop.mjs",
+    "mode-profile.d.mts",
+    "mode-profile.mjs",
     "README.md",
     "LICENSE"
   ]) {

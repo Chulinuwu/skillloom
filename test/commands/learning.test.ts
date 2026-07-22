@@ -9,7 +9,9 @@ import { tempDir } from "../helpers/fixtures.js";
 test("records bounded learning decisions and exposes the journey", async () => {
   const root = await tempDir("skillloom-learning-");
   await initCommand({ command: "init", root, json: true });
-  await modeCommand({ command: "mode", mode: "hermes", json: true }, root);
+  const mode = await modeCommand({ command: "mode", mode: "hermes", json: true }, root);
+  assert.equal(mode.automation.brainCapture, "auto-curated");
+  assert.equal(mode.automation.hostLifecycle.codex, "invoked");
   const event = await observeCommand({
     command: "observe",
     source: "codex",

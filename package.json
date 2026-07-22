@@ -39,6 +39,8 @@
     "hub/policy.example.hujson",
     "hub/scripts",
     "hooks",
+    "mode-profile.d.mts",
+    "mode-profile.mjs",
     "skills",
     "README.md",
     "LICENSE"
