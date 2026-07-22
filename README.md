@@ -7,7 +7,7 @@ Private second brain and governed Agent Skill lifecycle for Claude Code, Codex, 
 [![npm version](https://img.shields.io/npm/v/%40chulinxz%2Fskillloom.svg)](https://www.npmjs.com/package/@chulinxz/skillloom)
 [![CI](https://github.com/Chulinuwu/skillloom/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Chulinuwu/skillloom/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/Chulinuwu/skillloom/actions/workflows/codeql.yml/badge.svg?branch=dev)](https://github.com/Chulinuwu/skillloom/actions/workflows/codeql.yml)
-[![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-339933.svg)](https://nodejs.org/)
+[![Node.js 22.16+](https://img.shields.io/badge/node-%3E%3D22.16-339933.svg)](https://nodejs.org/)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ![Skillloom capture, validate, and promote demo](assets/demo.webp)
@@ -76,7 +76,7 @@ No Docker application port is published to the LAN or internet. Tailscale Serve 
 The CLI is optional for people who want direct terminal control:
 
 ```bash
-npm install --global @chulinxz/skillloom@0.2
+npm install --global @chulinxz/skillloom@0.3
 skillloom init
 ```
 
@@ -229,7 +229,7 @@ Runtime state lives under `.skillloom/`: configuration, immutable candidates, le
 
 ## Development
 
-Requirements are Node.js 20 or newer and npm. Claude Code and Codex CLIs are only required for their official plugin validators. CI runs the full lifecycle and packed global-install smoke test on Node.js 20, 22, and 24. CodeQL and Dependabot cover source and dependency changes.
+Requirements are Node.js 22.16 or newer and npm. Claude Code and Codex CLIs are only required for their official plugin validators. CI runs the full lifecycle and packed global-install smoke test on Node.js 22.16, 24, and 26. CodeQL and Dependabot cover source and dependency changes.
 
 ```bash
 npm ci

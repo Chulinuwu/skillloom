@@ -156,7 +156,7 @@ test("built setup is explicit local-only, offline-safe, and idempotent with no h
   assert.equal(second.targets.find(({ target }: { target: string }) => target === "agents").status, "unchanged");
   await stat(join(homeDir, ".agents", "skills", "capture-learning", "SKILL.md"));
   const state = JSON.parse(await readFile(join(homeDir, ".skillloom", "hub", "setup.json"), "utf8"));
-  assert.equal(state.completed["agents:user"].packageVersion, "0.2.1");
+  assert.equal(state.completed["agents:user"].packageVersion, "0.3.0");
 });
 
 async function runCli(projectRoot: string, homeDir: string, args: string[], path = process.env.PATH ?? "") {

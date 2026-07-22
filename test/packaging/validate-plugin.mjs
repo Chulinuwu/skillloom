@@ -57,10 +57,15 @@ async function validateManifests() {
   const mcp = await json(".mcp.json");
   const claudeMarketplace = await json(".claude-plugin/marketplace.json");
   const codexMarketplace = await json(".agents/plugins/marketplace.json");
+  const ci = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const readme = await readFile(join(root, "README.md"), "utf8");
   const version = packageJson.version;
 
-  invariant(version === "0.2.1", "package version must be 0.2.1");
+  invariant(version === "0.3.0", "package version must be 0.3.0");
   invariant(packageLock.version === version && packageLock.packages?.[""]?.version === version, "package-lock version must match package.json");
+  invariant(packageJson.engines?.node === ">=22.16.0", "package Node.js runtime floor must be 22.16.0");
+  invariant(/node:\s*\["22\.16\.0", 24, 26\]/u.test(ci), "CI must test the runtime floor and supported Node.js releases");
+  invariant(readme.includes("Node.js 22.16 or newer") && readme.includes("Node.js 22.16, 24, and 26"), "README runtime requirements must match package and CI contracts");
   invariant(packageJson.bin?.skillloom === "dist/cli/main.js", "package bin must expose dist/cli/main.js");
   invariant(claude.version === version && codex.version === version, "plugin versions must match package.json");
   invariant(claudeMarketplace.plugins?.[0]?.version === version, "Claude marketplace version must match package.json");
