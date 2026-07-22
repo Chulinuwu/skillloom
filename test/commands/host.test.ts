@@ -19,7 +19,10 @@ test("host install uses host Tailscale Serve and reports both Tailnet surfaces",
   assert.equal(result.surfaces?.obsidian.url, "https://main-hub.example.ts.net:8443");
   assert.equal(result.surfaces?.obsidian.externalPort, 8443);
   assert.equal(result.surfaces?.obsidian.internalPort, 3000);
-  assert.equal(result.surfaces?.obsidian.access, "read-only");
+  assert.deepEqual(result.surfaces?.obsidian.workspaces, {
+    library: { path: "Library", access: "read-only" },
+    authoring: { path: "Authoring", access: "writable-staging" }
+  });
   assert.doesNotMatch(await readFile(join(hostRoot, "host.env"), "utf8"), /TS_AUTHKEY|ignored-secret/u);
   assert.equal(calls.filter((args) => args.includes("--wait-timeout") && args.includes("180")).length, 1);
   assert.ok(calls.some((args) => args.join(" ") === "serve --bg --https=443 http://127.0.0.1:8787"));

@@ -135,7 +135,15 @@ export type SetupRequest = {
 
 export type SetupSurfaces = {
   hub: { url: string; externalPort: 443 };
-  obsidian: { url: string; externalPort: 8443; internalPort: 3000; access: "read-only" };
+  obsidian: {
+    url: string;
+    externalPort: 8443;
+    internalPort: 3000;
+    workspaces: {
+      library: { path: "Library"; access: "read-only" };
+      authoring: { path: "Authoring"; access: "writable-staging" };
+    };
+  };
 };
 
 export type SetupResult = {

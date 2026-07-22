@@ -6,8 +6,9 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import test from "node:test";
 import { loadHubRuntimeConfig } from "../../src/hub/runtime/config.js";
+import { createAuthoringSyncLoop, type AuthoringSyncPort } from "../../src/hub/runtime/authoring-loop.js";
 import { runWithHubAuthorizationContext } from "../../src/hub/runtime/auth-context.js";
-import { createRuntimeBrainPermissions, createRuntimeRegistryPermissions } from "../../src/hub/runtime/permissions.js";
+import { OBSIDIAN_AUTHORING_ACTOR_ID, createRuntimeBrainPermissions, createRuntimeRegistryPermissions } from "../../src/hub/runtime/permissions.js";
 import { createHubRuntime } from "../../src/hub/runtime/service.js";
 import { loadHubRuntimeState } from "../../src/hub/runtime/state.js";
 import { authorizeTailscaleServeRequest } from "../../src/hub/tailscale/headers.js";
@@ -38,6 +39,25 @@ test("runtime config refuses non-loopback binds", () => {
     SKILLLOOM_HUB_PORT: "8787",
     SKILLLOOM_HUB_DATA_DIR: "/tmp/skillloom"
   }), /127\.0\.0\.1/u);
+});
+
+test("runtime config enables bounded Obsidian authoring sync by default", () => {
+  const config = loadHubRuntimeConfig({ SKILLLOOM_HUB_DATA_DIR: "/tmp/skillloom" });
+  assert.equal(config.obsidianAuthoringEnabled, true);
+  assert.equal(config.obsidianAuthoringIntervalMs, 1000);
+  assert.equal(loadHubRuntimeConfig({
+    SKILLLOOM_HUB_DATA_DIR: "/tmp/skillloom",
+    SKILLLOOM_OBSIDIAN_AUTHORING_ENABLED: "false",
+    SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS: "250"
+  }).obsidianAuthoringEnabled, false);
+  assert.throws(() => loadHubRuntimeConfig({
+    SKILLLOOM_HUB_DATA_DIR: "/tmp/skillloom",
+    SKILLLOOM_OBSIDIAN_AUTHORING_ENABLED: "yes"
+  }), /must be true or false/u);
+  assert.throws(() => loadHubRuntimeConfig({
+    SKILLLOOM_HUB_DATA_DIR: "/tmp/skillloom",
+    SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS: "249"
+  }), /250 to 3600000/u);
 });
 
 test("runtime state creates one persistent Hub UUID and Ed25519 key with private modes", async () => {
@@ -85,6 +105,57 @@ test("runtime permission ports enforce actor authorization at service boundary",
   await assert.rejects(() => runWithHubAuthorizationContext(contributor, async () => await registry.requirePublish({ actorId: contributor.principal.actorId })), HubAuthorizationError);
   await assert.rejects(() => runWithHubAuthorizationContext(reader, async () => await brain.requireRead({ actorId: "user:missing@example.com" })), HubAuthorizationError);
   await assert.rejects(() => brain.requireRead({ actorId: "user:missing@example.com" }), HubAuthorizationError);
+});
+
+test("local Obsidian authoring actor has only the Brain rights required by in-process sync", async () => {
+  const actor = { actorId: OBSIDIAN_AUTHORING_ACTOR_ID };
+  const brain = createRuntimeBrainPermissions();
+  const registry = createRuntimeRegistryPermissions();
+  await brain.requireRead(actor);
+  await brain.requireWrite(actor, "capture");
+  await brain.requireWrite(actor, "update");
+  const forgedRequest = authorize("user:reader@example.com", ["reader"]);
+  await assert.rejects(
+    () => runWithHubAuthorizationContext(forgedRequest, async () => await brain.requireRead(actor)),
+    HubAuthorizationError
+  );
+  await assert.rejects(
+    () => runWithHubAuthorizationContext(forgedRequest, async () => await brain.requireWrite(actor, "capture")),
+    HubAuthorizationError
+  );
+  await assert.rejects(() => brain.requireWrite(actor, "link"), HubAuthorizationError);
+  await assert.rejects(() => registry.requirePropose(actor), HubAuthorizationError);
+  await assert.rejects(() => registry.requirePublish(actor), HubAuthorizationError);
+});
+
+test("authoring loop retries failures without overlap and stops cleanly", async () => {
+  let initializeAttempts = 0;
+  let syncAttempts = 0;
+  let active = 0;
+  let maxActive = 0;
+  const errors: unknown[] = [];
+  const authoring: AuthoringSyncPort = {
+    async initialize(): Promise<void> {
+      initializeAttempts += 1;
+      if (initializeAttempts === 1) throw new Error("transient initialize failure");
+    },
+    async sync(): Promise<void> {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      syncAttempts += 1;
+      active -= 1;
+    }
+  };
+  const loop = createAuthoringSyncLoop(authoring, 250, (error) => errors.push(error));
+  loop.start();
+  await waitFor(() => syncAttempts === 1, 1000);
+  assert.equal(initializeAttempts, 2);
+  assert.equal(errors.length, 1);
+  assert.equal(maxActive, 1);
+  await loop.close();
+  const stoppedAt = syncAttempts;
+  await delay(300);
+  assert.equal(syncAttempts, stoppedAt);
 });
 test("runtime authorization context isolates concurrent grants for the same actor", async () => {
   const actorId = "user:shared@example.com";
@@ -137,6 +208,37 @@ test("runtime server serves unauthenticated health and authenticated hello acros
   assert.equal(second.hubInstanceId, first.hubInstanceId);
   assert.equal(second.signingPublicKey, first.signingPublicKey);
   await second.close();
+});
+
+test("runtime keeps HTTP healthy while authoring sync retries and stops the loop on close", async () => {
+  const port = await freePort();
+  const dataDir = await tempDir("skillloom-runtime-authoring-");
+  let syncAttempts = 0;
+  const errors: unknown[] = [];
+  const authoringSync: AuthoringSyncPort = {
+    async sync(): Promise<void> {
+      syncAttempts += 1;
+      if (syncAttempts === 1) throw new Error("transient authoring failure");
+    }
+  };
+  const runtime = await createHubRuntime({
+    SKILLLOOM_HUB_BIND_HOST: "127.0.0.1",
+    SKILLLOOM_HUB_PORT: String(port),
+    SKILLLOOM_HUB_DATA_DIR: dataDir,
+    SKILLLOOM_HUB_APP_CAP: appCapability,
+    SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS: "250"
+  }, { authoringSync, onAuthoringError: (error) => errors.push(error) });
+  await runtime.start();
+  try {
+    await waitFor(() => errors.length === 1, 1000);
+    assert.deepEqual(await getJson(port, "/healthz"), { status: 200, body: { data: { status: "ok" } } });
+    await waitFor(() => syncAttempts === 2, 1000);
+  } finally {
+    await runtime.close();
+  }
+  const stoppedAt = syncAttempts;
+  await delay(300);
+  assert.equal(syncAttempts, stoppedAt);
 });
 
 test("runtime refreshes Obsidian projection after brain mutations and recovers across restart", async () => {
@@ -271,4 +373,16 @@ async function freePort(): Promise<number> {
       server.close((error) => error ? reject(error) : resolve(address.port));
     });
   });
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs: number): Promise<void> {
+  const startedAt = Date.now();
+  while (!predicate()) {
+    if (Date.now() - startedAt >= timeoutMs) throw new Error("Timed out waiting for condition");
+    await delay(10);
+  }
+}
+
+async function delay(milliseconds: number): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }

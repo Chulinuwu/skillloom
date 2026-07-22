@@ -22,14 +22,20 @@ test("compose exposes Hub only on host loopback for host Tailscale Serve", async
   assert.doesNotMatch(compose, /^\s*expose:/mu);
   assert.doesNotMatch(compose, /funnel/iu);
 });
-test("compose exposes a hardened read-only Obsidian surface through host Tailscale Serve", async () => {
+test("compose exposes a hardened Obsidian library and isolated writable authoring workspace", async () => {
   const compose = await read("hub/compose.yaml");
   assert.match(compose, /lscr\.io\/linuxserver\/obsidian:v1\.12\.7-ls139/u);
   assert.match(compose, /"127\.0\.0\.1:3000:3000"/u);
   assert.match(compose, /HARDEN_DESKTOP: "true"/u);
   assert.match(compose, /START_DOCKER: "false"/u);
   assert.match(compose, /SELKIES_ENABLE_SHARING: "false"/u);
-  assert.match(compose, /brain\/projections\/obsidian:\/config\/Documents\/Skillloom:ro/u);
+  assert.match(compose, /brain\/projections\/obsidian:\/config\/Documents\/Skillloom\/Library:ro/u);
+  assert.match(compose, /brain\/authoring:\/config\/Documents\/Skillloom\/Authoring:rw/u);
+  assert.doesNotMatch(compose, /:\/config\/Documents\/Skillloom\/Library:rw/u);
+  assert.doesNotMatch(compose, /:\/config\/Documents\/Skillloom\/Authoring:ro/u);
+  assert.doesNotMatch(compose, /:\/config\/Documents\/Skillloom\s*$/mu);
+  assert.match(compose, /SKILLLOOM_OBSIDIAN_AUTHORING_ENABLED: \$\{SKILLLOOM_OBSIDIAN_AUTHORING_ENABLED:-true\}/u);
+  assert.match(compose, /SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS: \$\{SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS:-1000\}/u);
 });
 
 test("host service configures private Tailscale Serve without Funnel or auth keys", async () => {

@@ -50,7 +50,7 @@ export class HostService {
   private async requireConsent(yes: boolean): Promise<void> {
     if (yes) return;
     if (!this.dependencies.consent.interactive) throw new UsageError("Non-interactive host installation requires --yes");
-    if (!await this.dependencies.consent.confirm("Install and start the private Skillloom Hub and read-only Obsidian Web UI with Docker?")) {
+    if (!await this.dependencies.consent.confirm("Install and start the private Skillloom Hub and Obsidian Web UI with a read-only Library and writable Authoring workspace?")) {
       throw new UsageError("Host installation declined; no Docker changes were made");
     }
   }

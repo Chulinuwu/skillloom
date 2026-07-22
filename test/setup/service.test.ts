@@ -236,7 +236,10 @@ test("main-hub role returns a local setup plan without trying client Hub discove
   assert.equal(result.hub.mode, "local-only");
   assert.equal(result.plan?.role, "main-hub");
   assert.equal(result.host?.status, "running");
-  assert.equal(result.surfaces?.obsidian.access, "read-only");
+  assert.deepEqual(result.surfaces?.obsidian.workspaces, {
+    library: { path: "Library", access: "read-only" },
+    authoring: { path: "Authoring", access: "writable-staging" }
+  });
   assert.deepEqual(calls, ["environment.detect", "guidance.plan", "host.install:true", "detect:agents", "install:agents"]);
 });
 
@@ -435,7 +438,15 @@ function host(calls: string[], error?: Error): SetupHostPort {
         policyPath: "/host/policy.hujson",
         surfaces: {
           hub: { url: "https://skillloom.example.ts.net", externalPort: 443 },
-          obsidian: { url: "https://skillloom.example.ts.net:8443", externalPort: 8443, internalPort: 3000, access: "read-only" }
+          obsidian: {
+            url: "https://skillloom.example.ts.net:8443",
+            externalPort: 8443,
+            internalPort: 3000,
+            workspaces: {
+              library: { path: "Library", access: "read-only" },
+              authoring: { path: "Authoring", access: "writable-staging" }
+            }
+          }
         },
         nextActions: ["Open Obsidian from another tailnet device"]
       };

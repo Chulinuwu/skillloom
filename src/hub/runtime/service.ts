@@ -1,9 +1,10 @@
-import { createBrainService, FileObsidianProjectionManager, type BrainDerivedProjectionPort } from "../brain/index.js";
+import { createBrainService, createObsidianAuthoringSync, FileObsidianProjectionManager, type BrainDerivedProjectionPort } from "../brain/index.js";
 import { createBrainHttpRouter, createBrainHttpServer, listenBrainHttpServer } from "../http/index.js";
 import { createRegistryHttpRouter, createRegistryService } from "../registry/index.js";
 import { loadHubRuntimeConfig, type HubRuntimeConfig } from "./config.js";
+import { createAuthoringSyncLoop, type AuthoringSyncPort } from "./authoring-loop.js";
 import { createHubRuntimeRequestListener } from "./listener.js";
-import { createRuntimeBrainPermissions, createRuntimeRegistryPermissions } from "./permissions.js";
+import { OBSIDIAN_AUTHORING_ACTOR_ID, createRuntimeBrainPermissions, createRuntimeRegistryPermissions } from "./permissions.js";
 import { createHubRuntimeRouter } from "./router.js";
 import { loadHubRuntimeState } from "./state.js";
 
@@ -15,7 +16,11 @@ export type HubRuntime = Readonly<{
   close(): Promise<void>;
 }>;
 
-export async function createHubRuntime(env: NodeJS.ProcessEnv = process.env, dependencies: { projection?: BrainDerivedProjectionPort } = {}): Promise<HubRuntime> {
+export async function createHubRuntime(env: NodeJS.ProcessEnv = process.env, dependencies: {
+  projection?: BrainDerivedProjectionPort;
+  authoringSync?: AuthoringSyncPort;
+  onAuthoringError?: (error: unknown) => void;
+} = {}): Promise<HubRuntime> {
   const config = loadHubRuntimeConfig(env);
   const state = await loadHubRuntimeState(config.dataDir);
   const brain = await createBrainService({
@@ -29,6 +34,16 @@ export async function createHubRuntime(env: NodeJS.ProcessEnv = process.env, dep
     signer: state.signer,
     permissions: createRuntimeRegistryPermissions()
   });
+  const authoring = config.obsidianAuthoringEnabled
+    ? dependencies.authoringSync ?? createObsidianAuthoringSync({
+        root: state.paths.brainRoot,
+        brain,
+        actor: { actorId: OBSIDIAN_AUTHORING_ACTOR_ID }
+      })
+    : undefined;
+  const authoringLoop = authoring === undefined
+    ? undefined
+    : createAuthoringSyncLoop(authoring, config.obsidianAuthoringIntervalMs, dependencies.onAuthoringError);
   let ready = true;
   const router = createHubRuntimeRouter(createBrainHttpRouter(brain), createRegistryHttpRouter(registry), {
     hubInstanceId: state.hubInstanceId,
@@ -49,6 +64,7 @@ export async function createHubRuntime(env: NodeJS.ProcessEnv = process.env, dep
     signingPublicKey: state.signer.publicKey,
     async start(): Promise<void> {
       await listenBrainHttpServer(server, { host: config.bindHost, port: config.port });
+      authoringLoop?.start();
     },
     async close(): Promise<void> {
       if (closePromise !== undefined) {
@@ -57,6 +73,7 @@ export async function createHubRuntime(env: NodeJS.ProcessEnv = process.env, dep
       }
       ready = false;
       closePromise = (async () => {
+        await authoringLoop?.close();
         if (server.listening) {
           await new Promise<void>((resolve, reject) => {
             server.close((error) => error ? reject(error) : resolve());

@@ -111,10 +111,10 @@ function mainHubSteps(environment: SetupEnvironment, sources: SetupGuidanceSourc
     }]),
     {
       id: "start-private-stack",
-      title: "Start the private Hub and read-only Obsidian Web UI stack",
+      title: "Start the private Hub and Obsidian Web UI with a read-only Library and writable Authoring workspace",
       action: "automatic",
       command: "skillloom host install --yes",
-      verification: "Docker reports skillloom-hub and obsidian running, then Tailscale Serve publishes only tailnet HTTPS surfaces."
+      verification: "Docker reports skillloom-hub and obsidian running with Library read-only and Authoring writable-staging, then Tailscale Serve publishes only tailnet HTTPS surfaces."
     },
     {
       id: "verify-tailnet-access",

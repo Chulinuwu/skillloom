@@ -10,7 +10,10 @@ export function resolveSetupSurfaces(discovery: HubSetupDiscovery): SetupSurface
       url: obsidian.origin,
       externalPort: 8443,
       internalPort: 3000,
-      access: "read-only"
+      workspaces: {
+        library: { path: "Library", access: "read-only" },
+        authoring: { path: "Authoring", access: "writable-staging" }
+      }
     }
   };
 }

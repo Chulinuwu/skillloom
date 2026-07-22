@@ -3,6 +3,8 @@ export type HubRuntimeConfig = Readonly<{
   port: number;
   dataDir: string;
   appCapability: string;
+  obsidianAuthoringEnabled: boolean;
+  obsidianAuthoringIntervalMs: number;
 }>;
 
 const defaultAppCapability = "skillloom.io/cap/skillloom";
@@ -14,7 +16,9 @@ export function loadHubRuntimeConfig(env: NodeJS.ProcessEnv = process.env): HubR
     bindHost,
     port: parsePort(env.SKILLLOOM_HUB_PORT ?? "8787"),
     dataDir: requiredString(env.SKILLLOOM_HUB_DATA_DIR, "SKILLLOOM_HUB_DATA_DIR"),
-    appCapability: capabilityName(env.SKILLLOOM_HUB_APP_CAP ?? env.SKILLLOOM_APP_CAP ?? defaultAppCapability)
+    appCapability: capabilityName(env.SKILLLOOM_HUB_APP_CAP ?? env.SKILLLOOM_APP_CAP ?? defaultAppCapability),
+    obsidianAuthoringEnabled: parseBoolean(env.SKILLLOOM_OBSIDIAN_AUTHORING_ENABLED ?? "true", "SKILLLOOM_OBSIDIAN_AUTHORING_ENABLED"),
+    obsidianAuthoringIntervalMs: parseInterval(env.SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS ?? "1000")
   };
 }
 
@@ -33,4 +37,19 @@ function requiredString(value: string | undefined, name: string): string {
 function capabilityName(value: string): string {
   if (!/^[a-z0-9.-]+\/cap\/[a-z0-9._-]+$/.test(value)) throw new Error("Hub app capability name is invalid");
   return value;
+}
+
+function parseBoolean(value: string, name: string): boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new Error(`${name} must be true or false`);
+}
+
+function parseInterval(value: string): number {
+  if (!/^[1-9]\d*$/.test(value)) throw new Error("SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS must be an integer from 250 to 3600000");
+  const interval = Number(value);
+  if (!Number.isSafeInteger(interval) || interval < 250 || interval > 3_600_000) {
+    throw new Error("SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS must be an integer from 250 to 3600000");
+  }
+  return interval;
 }

@@ -13,7 +13,10 @@ test("setup surfaces derive Obsidian from the same host Serve identity", () => {
       url: "https://main-hub.example.ts.net:8443",
       externalPort: 8443,
       internalPort: 3000,
-      access: "read-only"
+      workspaces: {
+        library: { path: "Library", access: "read-only" },
+        authoring: { path: "Authoring", access: "writable-staging" }
+      }
     }
   });
   assert.equal(resolveSetupSurfaces({ mode: "local-only" }), null);

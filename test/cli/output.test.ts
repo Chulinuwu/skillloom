@@ -53,3 +53,27 @@ test("setup output prints source-bound evidence and redacts secret snippets", ()
   assert.match(output, /^human: Trust Hub source=tailscale serve --help$/mu);
   assert.doesNotMatch(output, /tskey-secret/u);
 });
+
+test("host output distinguishes the read-only Library from writable Authoring staging", () => {
+  const output = formatOutput({
+    command: "host",
+    action: "status",
+    status: "running",
+    root: "/host",
+    policyPath: "/host/policy.hujson",
+    nextActions: [],
+    surfaces: {
+      hub: { url: "https://skillloom.example.ts.net", externalPort: 443, internalPort: 8787, access: "read-write" },
+      obsidian: {
+        url: "https://skillloom.example.ts.net:8443",
+        externalPort: 8443,
+        internalPort: 3000,
+        workspaces: {
+          library: { path: "Library", access: "read-only" },
+          authoring: { path: "Authoring", access: "writable-staging" }
+        }
+      }
+    }
+  }, false);
+  assert.match(output, /^obsidian: .*Library read-only, Authoring writable-staging\)$/mu);
+});

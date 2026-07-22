@@ -86,7 +86,7 @@ export class SetupService implements SetupServicePort {
     if (!this.consent.interactive) {
       throw new UsageError("Non-interactive Main Hub setup requires --yes to start Docker, configure private Tailscale Serve, and install local integrations");
     }
-    const accepted = await this.consent.confirm(`Start the private Docker Hub stack, configure private Tailscale Serve, and install Skillloom for this ${request.scope}?`);
+    const accepted = await this.consent.confirm(`Start the private Docker Hub and Obsidian Web UI with a read-only Library and writable Authoring workspace, configure private Tailscale Serve, and install Skillloom for this ${request.scope}?`);
     if (!accepted) throw new UsageError("Main Hub setup declined; no host or installation changes were made");
   }
 

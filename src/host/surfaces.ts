@@ -11,7 +11,15 @@ export function surfacesFromTailscaleStatus(stdout: string): HostResult["surface
   if (!host) return null;
   return {
     hub: { url: `https://${host}`, externalPort: 443, internalPort: 8787, access: "read-write" },
-    obsidian: { url: `https://${host}:8443`, externalPort: 8443, internalPort: 3000, access: "read-only" }
+    obsidian: {
+      url: `https://${host}:8443`,
+      externalPort: 8443,
+      internalPort: 3000,
+      workspaces: {
+        library: { path: "Library", access: "read-only" },
+        authoring: { path: "Authoring", access: "writable-staging" }
+      }
+    }
   };
 }
 function isRecord(value: unknown): value is Record<string, unknown> {

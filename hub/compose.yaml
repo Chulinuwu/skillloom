@@ -11,6 +11,8 @@ services:
       SKILLLOOM_HUB_PORT: 8787
       SKILLLOOM_HUB_DATA_DIR: /data
       SKILLLOOM_HUB_TRUSTED_PROXY: tailscale-serve
+      SKILLLOOM_OBSIDIAN_AUTHORING_ENABLED: ${SKILLLOOM_OBSIDIAN_AUTHORING_ENABLED:-true}
+      SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS: ${SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS:-1000}
     volumes:
       - ${SKILLLOOM_HUB_DATA_DIR:-./data}:/data
   obsidian:
@@ -31,4 +33,5 @@ services:
     shm_size: 1gb
     volumes:
       - ${SKILLLOOM_OBSIDIAN_CONFIG_DIR:-./obsidian-config}:/config
-      - ${SKILLLOOM_HUB_DATA_DIR:-./data}/brain/projections/obsidian:/config/Documents/Skillloom:ro
+      - ${SKILLLOOM_HUB_DATA_DIR:-./data}/brain/projections/obsidian:/config/Documents/Skillloom/Library:ro
+      - ${SKILLLOOM_HUB_DATA_DIR:-./data}/brain/authoring:/config/Documents/Skillloom/Authoring:rw

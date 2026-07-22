@@ -48,7 +48,7 @@ test("local-only role installs local integrations without Hub or Tailscale side 
   assert.deepEqual(calls, ["environment.detect", "sources.collect", "detect:claude", "install:claude", "detect:codex", "install:codex", "detect:agents", "install:agents"]);
 });
 
-test("main-hub role reports private Hub and read-only Obsidian URLs after setup", async () => {
+test("main-hub role reports private Hub and split Obsidian workspaces after setup", async () => {
   const calls: string[] = [];
   const result = await service(calls, { sources: [tailscaleSource, dockerSource], environment: { tailscale: "authenticated", docker: "available" } })
     .setup({ target: "auto", hub: "auto", scope: "user", yes: true, role: "main-hub" });
@@ -57,7 +57,10 @@ test("main-hub role reports private Hub and read-only Obsidian URLs after setup"
   assert.equal(result.host?.status, "running");
   assert.equal(result.surfaces?.hub.url, "https://skillloom.tailnet.ts.net");
   assert.equal(result.surfaces?.obsidian.url, "https://skillloom.tailnet.ts.net:8443");
-  assert.equal(result.surfaces?.obsidian.access, "read-only");
+  assert.deepEqual(result.surfaces?.obsidian.workspaces, {
+    library: { path: "Library", access: "read-only" },
+    authoring: { path: "Authoring", access: "writable-staging" }
+  });
   assert.deepEqual(calls, ["environment.detect", "sources.collect", "host.install:true", "detect:claude", "install:claude", "detect:codex", "install:codex", "detect:agents", "install:agents"]);
 });
 
@@ -175,7 +178,15 @@ function host(calls: string[]): SetupHostPort {
         policyPath: "/host/policy.hujson",
         surfaces: {
           hub: { url: "https://skillloom.tailnet.ts.net", externalPort: 443 },
-          obsidian: { url: "https://skillloom.tailnet.ts.net:8443", externalPort: 8443, internalPort: 3000, access: "read-only" }
+          obsidian: {
+            url: "https://skillloom.tailnet.ts.net:8443",
+            externalPort: 8443,
+            internalPort: 3000,
+            workspaces: {
+              library: { path: "Library", access: "read-only" },
+              authoring: { path: "Authoring", access: "writable-staging" }
+            }
+          }
         },
         nextActions: ["Open Obsidian from another tailnet device"]
       };
