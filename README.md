@@ -14,7 +14,7 @@ Private second brain for human knowledge, agent memories, workflows, and governe
 
 An agent solves a hard problem on one machine. A week later, another agent hits the same problem on another machine and starts from zero. The useful answer existed, but it was trapped in a session log.
 
-Skillloom makes that knowledge durable. Agents write bounded Brain records through MCP or HTTP. People browse the same Markdown Brain in a hosted, read-only Obsidian Web UI. When a workflow proves reusable, Skillloom can turn it into an immutable skill candidate, validate it, enforce policy, and promote it transactionally into Claude Code, Codex, or another portable agent target.
+Skillloom makes that knowledge durable. Agents write bounded Brain records through MCP or HTTP. People browse the canonical Brain and stage their own notes and revisions in a hosted Obsidian Web UI. When a workflow proves reusable, Skillloom can turn it into an immutable skill candidate, validate it, enforce policy, and promote it transactionally into Claude Code, Codex, or another portable agent target.
 
 Skills are part of the second brain, not the whole thing. Notes, facts, sources, decisions, project context, memories, and workflow evidence stay as knowledge. Only a validated and approved skill package becomes executable agent instruction.
 
@@ -22,11 +22,11 @@ Skills are part of the second brain, not the whole thing. Notes, facts, sources,
 
 | Layer | What it stores | Who writes | How it is trusted |
 | --- | --- | --- | --- |
-| Brain | Notes, facts, sources, decisions, project context, memories, and workflow evidence | Agents through authenticated tools | Revision checks, provenance, idempotency, audit |
+| Brain | Notes, facts, sources, decisions, project context, memories, and workflow evidence | Agents through authenticated tools; people stage supported mutable records through Obsidian Authoring | Revision checks, provenance, idempotency, audit |
 | Workflow evidence | What worked, what failed, verifier results, and base artifact hashes | Host agent and Skillloom services | Bounded capture, secret redaction, replay-safe records |
 | Skill candidates | Immutable proposed skill packages | Agent or human | Snapshot hashing, validation, scanner findings |
 | Skill releases | Approved portable Agent Skills | Policy or promoter | Server-side validation, signed registry, transactional local promotion |
-| Obsidian Web UI | Human browsing view over the Brain | Read-only surface | Writes stay behind authenticated Skillloom APIs |
+| Obsidian Web UI | Read-only Library plus writable Authoring workspaces | People stage captures and revisions | Accepted changes pass through BrainService; conflicts never overwrite silently |
 
 Local-first still matters. Every machine keeps its own `.skillloom/` store for local policy, candidates, operations, backups, locks, installed targets, cached Hub state, and pending writes. The optional Hub is a private synchronization and access boundary inside your Tailnet, not a shared mutable filesystem.
 
@@ -57,9 +57,21 @@ No Docker application port is published to the LAN or internet. Tailscale Serve 
 
 ## Obsidian access
 
-Open the Obsidian URL printed by `$setup-skillloom` or `skillloom host status` from a device in the same Tailnet. The hosted vault is mounted read-only.
+Open the Obsidian URL printed by `$setup-skillloom` or `skillloom host status` from a device in the same Tailnet. The hosted vault separates two trust zones:
 
-Use Obsidian to browse the Brain, graph connections, inspect sources, and read agent-maintained knowledge. Do not edit the live vault through Obsidian Desktop, network shares, Taildrive, SMB, NFS, or SSHFS yet. Those paths bypass Skillloom revision and audit checks. Agents and users should write through authenticated Skillloom MCP or HTTP tools until the external-revision adapter exists.
+- `Library/` is the read-only canonical projection. Browse it, graph links, inspect sources, and read human- and agent-maintained knowledge. Direct edits are unsupported.
+- `Authoring/Inbox/` accepts new staged notes. `Authoring/Curated/` accepts revision-aware edits to notes, facts, decisions, projects, memories, claims, entities, and concepts.
+- `Authoring/Evidence/` keeps the exact accepted source snapshots, while `Authoring/Conflicts/` keeps stale or invalid edits for review. Both are system-maintained.
+
+For the simplest capture, create a normal `.md` file in `Authoring/Inbox/`. Without Skillloom metadata it becomes a private note titled from the filename.
+
+When editing `Authoring/Curated/`, keep `canonicalArtifactId` and `baseRevision` intact. Skillloom refreshes them after a successful update; stale revisions are preserved as conflicts.
+
+The Hub watches Authoring and sends every accepted capture or update through BrainService. That preserves canonical revisions, provenance, idempotency, audit events, and conflict records instead of treating the Obsidian mount as a shared writable database. A stale edit becomes an explicit conflict; it never silently replaces a newer revision.
+
+After a successful Inbox import, the staged file is removed, its canonical revision appears under `Authoring/Curated/`, and the submitted snapshot remains under `Authoring/Evidence/`. A rejected file stays in place; review the matching conflict and edit the original staged file to retry.
+
+The browser desktop cannot prove which individual Tailnet identity changed a file. Filesystem authoring is therefore attributed to the synthetic local actor `local:obsidian-authoring`. Use authenticated MCP or HTTP when per-user or per-agent attribution matters. Do not make `Library/` writable or write to the canonical Brain through Obsidian Desktop, network shares, Taildrive, SMB, NFS, or SSHFS.
 
 ## How Skillloom differs from claude-mem
 
@@ -70,7 +82,7 @@ The projects are adjacent, not direct replacements.
 | Primary job | Automatic session memory and context continuity | Curated shared knowledge plus governed skill lifecycle |
 | Capture | Hooks observe work and compress observations | Bounded Brain records and explicit or Hermes-curated learning decisions |
 | Retrieval | Automatic context injection and progressive memory search | Explicit Brain search in `manual` and `policy`; bounded recall in `hermes` |
-| Human surface | Purpose-built memory viewer | Read-only Obsidian Web UI over a Markdown Brain |
+| Human surface | Purpose-built memory viewer | Obsidian Web UI with a read-only Library and writable, governed Authoring staging |
 | Skills | Memory search can be skill-facing | Candidate, validation, policy, proof, promotion, recovery, rollback, signed registry |
 
 Short version: claude-mem helps an agent remember what happened. Skillloom helps many agents share what is worth keeping, then safely turn proven procedures into reusable skills.
@@ -84,11 +96,11 @@ Projects like [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian)
 Skillloom takes that second-brain idea and adds an agent-governance boundary:
 
 - Human knowledge, agent memory, workflow evidence, and skills live in one conceptual Brain.
-- Plain Markdown remains browsable in Obsidian.
-- Agent writes go through authenticated tools so revision, provenance, idempotency, and audit stay valid.
+- Plain Markdown remains browsable in Obsidian, while human edits enter through a revision-aware Authoring workspace.
+- Agent writes go through authenticated tools and accepted Obsidian writes go through BrainService, so revision, provenance, idempotency, and audit stay valid.
 - A Brain note never becomes executable instruction unless it passes the skill candidate lifecycle.
 
-Skillloom does not currently claim automatic whole-vault organization, Obsidian-native authoring sync, or claude-obsidian compatibility.
+Skillloom does not currently claim automatic whole-vault organization or claude-obsidian compatibility. The Authoring bridge supports governed Brain capture and updates; it is not a path around skill validation or promotion policy.
 
 ## Modes
 
@@ -108,7 +120,7 @@ skillloom mode hermes
 skillloom mode --json
 ```
 
-`hermes` is the most automatic mode, but not a permissionless mode. A lifecycle-capable host can request bounded Brain recall at session start and one bounded learning decision at task end. Procedural outcomes still go through immutable candidate capture, validation, policy, quarantine on rejection, and transactional promotion on approval.
+`hermes` is the most automatic mode, but not a permissionless mode. A lifecycle-capable host can request bounded Brain recall at session start and one bounded learning decision at task end. Hermes auto-curates through authenticated MCP or HTTP under Contributor capability, not by editing canonical files. Procedural outcomes still go through immutable candidate capture, validation, policy, quarantine on rejection, and transactional promotion on approval.
 
 Codex and other hosts that do not expose compatible plugin lifecycle hooks still use the same Brain, skills, and MCP tools, but Hermes lifecycle behavior is invoked by the user or host instead of automatic hooks.
 

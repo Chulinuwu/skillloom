@@ -55,11 +55,14 @@ flowchart LR
             BRAIN["Canonical Markdown Brain"]
             INDEX["SQLite index, metadata, and audit"]
             REGISTRY["Content-addressed skill registry"]
-            OBSIDIAN["Read-only Obsidian Web UI"]
+            OBSIDIAN["Obsidian Web UI"]
+            AUTHORING["Writable Authoring staging"]
             API --> BRAIN
             API --> INDEX
             API --> REGISTRY
-            BRAIN -->|read-only projection| OBSIDIAN
+            BRAIN -->|read-only Library projection| OBSIDIAN
+            OBSIDIAN --> AUTHORING
+            AUTHORING -->|revision-aware sync| API
         end
         SERVE -->|HTTPS 443 to 127.0.0.1:8787| API
         SERVE -->|HTTPS 8443 to 127.0.0.1:3000| OBSIDIAN
@@ -98,6 +101,7 @@ It does not own candidate validation or local installation transactions. Those r
 The Hub is the networked control plane. It owns:
 
 - Brain reads, writes, indexing, revision checks, and audit events.
+- Checkpointed Obsidian Authoring ingestion through the same BrainService mutation boundary.
 - Tailscale-derived identity plus application authorization.
 - Immutable candidate uploads and signed release artifacts.
 - Server-side validation, idempotency, and conflict responses.
@@ -106,14 +110,18 @@ The backend listens on `127.0.0.1:8787`. It is not published to the LAN or inter
 
 ### Obsidian
 
-Obsidian is an optional human browsing surface. It is not an authorization or promotion boundary.
+Obsidian is an optional human browsing and authoring surface. It is not an authorization or promotion boundary.
 
 - The browser surface listens on `127.0.0.1:3000`.
 - Tailscale Serve exposes it privately on HTTPS port `8443`.
-- The generated Brain projection is mounted read-only.
-- Direct SMB, NFS, SSHFS, Taildrive, or native Obsidian writes to the live projection are unsupported.
+- `Library/` is a generated Brain projection mounted read-only.
+- `Authoring/Inbox/` stages new supported human knowledge records, `Authoring/Curated/` stages revision-aware edits, `Authoring/Evidence/` preserves accepted input snapshots, and `Authoring/Conflicts/` preserves changes that need review.
+- The Hub waits for files to settle and then sends accepted changes through BrainService, preserving revisions, provenance, idempotency, audit, and deterministic conflicts.
+- Direct SMB, NFS, SSHFS, Taildrive, or native Obsidian writes to `Library/` or canonical Brain files are unsupported.
 
-Agent and human mutations go through authenticated Skillloom APIs until an audited external-revision adapter exists.
+The filesystem authoring bridge cannot recover an individual Tailnet identity from an Obsidian file change, so it records `local:obsidian-authoring` as a synthetic local actor with Brain capture and update authority only. Humans and agents that need individual attribution use authenticated MCP or HTTP. Hermes auto-curates through those APIs under Contributor capability, not through direct filesystem writes.
+
+Authoring does not provide a Brain-to-execution shortcut. No staged file can publish or promote a skill; skill candidate capture, validation, policy, and transactional promotion remain separate.
 
 ## Discovery and trust
 

@@ -1,6 +1,6 @@
 # Skillloom private Hub
 
-This compose bundle runs one private Skillloom second-brain Hub and one read-only Obsidian Web UI on a machine that is already signed in to Tailscale. Docker stays local. Tailscale Serve on the host publishes private HTTPS URLs to devices in the same tailnet.
+This compose bundle runs one private Skillloom second-brain Hub and one governed Obsidian Web UI on a machine that is already signed in to Tailscale. Docker stays local. Tailscale Serve on the host publishes private HTTPS URLs to devices in the same tailnet.
 
 Default surfaces:
 
@@ -14,7 +14,7 @@ Requirements:
 - Tailnet policy grants with `skillloom.io/cap/skillloom` app capabilities for users and tagged agents that should read, write, or publish through the Hub.
 - On Linux bind mounts, precreate `hub/data` with mode `0700` and ownership for uid `1000`, or equivalent host ownership that lets the runtime image's `node` user read and write it. The backup user must also be able to read it.
 
-Do not enable Funnel. Do not expose Docker ports beyond `127.0.0.1`. Do not mount the Docker socket into Obsidian. Do not make the Brain vault writable inside Obsidian.
+Do not enable Funnel. Do not expose Docker ports beyond `127.0.0.1`. Do not mount the Docker socket into Obsidian. Keep the canonical `Library/` projection read-only; only the managed `Authoring/` staging tree is writable.
 
 ## Plugin path
 
@@ -47,6 +47,8 @@ sudo chown 1000:1000 hub/data
 ```sh
 docker compose --env-file hub/.env -f hub/compose.yaml up -d --build
 ```
+
+Obsidian Authoring is enabled by default. Operators may set `SKILLLOOM_OBSIDIAN_AUTHORING_ENABLED` to exactly `true` or `false`. `SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS` defaults to `1000` and accepts `250` through `3600000` milliseconds. Disabling the loop leaves the Authoring mount intact but does not import staged changes until the loop is enabled again.
 
 4. Configure host Tailscale Serve from the authenticated host session. Verify the current syntax with the official Tailscale docs or `tailscale serve --help` before running manual fallback commands:
 
@@ -163,14 +165,34 @@ The same Skillloom plugin and MCP bridge work for Claude Code, Codex, and any nu
 
 ## Brain and Obsidian boundary
 
-The Hub serves the same Brain and skill registry regardless of local mode. The Hub exposes agent-facing MCP and HTTP APIs plus a hardened Obsidian browser surface. The Brain vault mount inside Obsidian is read-only, terminal and sudo access are disabled, sharing is disabled, and no Docker socket is mounted. Direct Obsidian Desktop, network-share, or filesystem-sync writes to the live vault remain unsupported because they bypass revision and audit enforcement. Native Obsidian authoring remains a deferred synchronization adapter.
+The Hub serves the same Brain and skill registry regardless of local mode. The Hub exposes agent-facing MCP and HTTP APIs plus a hardened Obsidian browser surface. Terminal and sudo access are disabled, sharing is disabled, and no Docker socket is mounted.
+
+The Obsidian vault contains distinct trust zones:
+
+- `Library/` is a read-only projection of canonical Brain records. Direct writes are unsupported.
+- `Authoring/Inbox/` stages new supported human knowledge records.
+- `Authoring/Curated/` stages revision-aware edits to supported mutable records.
+- `Authoring/Evidence/` preserves exact accepted input snapshots and is system-maintained.
+- `Authoring/Conflicts/` preserves edits that cannot be accepted without review.
+
+A plain `.md` file in Inbox needs no metadata. It defaults to a private `note` whose title comes from the filename.
+
+Curated files carry `canonicalArtifactId` and `baseRevision`. Users may edit supported content and metadata but must keep those identity fields intact. The Hub rewrites the Curated copy with the accepted revision after a successful update.
+
+The Hub authoring loop waits for a file to settle, then routes accepted changes through BrainService. Successful writes retain provenance and audit records; updates use the recorded base revision; stale or invalid edits cannot overwrite canonical data. The loop is checkpointed and retries after transient failures.
+
+On a successful Inbox import, the loop removes the staged file after it has written the canonical Curated copy, stored the accepted Evidence snapshot, and persisted its checkpoint. Rejected input remains available with a matching conflict record; changing the original staged file retries it on a later pass.
+
+The Obsidian web desktop cannot prove which individual Tailnet user changed a filesystem file. These writes are attributed to `local:obsidian-authoring`, a synthetic local actor limited to Brain capture and update. Use authenticated MCP or HTTP for per-user or per-agent attribution. Hermes uses those authenticated APIs under Contributor capability and does not write canonical files directly.
+
+No Authoring directory can publish or promote a skill. A reusable procedure still needs immutable candidate capture, validation, policy, and the normal promotion transaction. Direct Obsidian Desktop, network-share, or filesystem-sync writes to `Library/` or the canonical Brain remain unsupported.
 
 Tailscale Serve strips spoofed incoming identity and app-capability headers before forwarding. Human-owned devices can provide a user login header. Tagged devices do not provide a user login, so Skillloom must authorize tagged agents from the signed app capability value, not from IP address or hostname.
 
 ## State, backup, and recovery
 
-- `hub/data` contains Hub state: brain Markdown, indexes, audit ledger, registry manifests, and signing keys.
-- `hub/obsidian-config` contains the browser desktop profile. It does not contain a writable copy of the Brain vault.
+- `hub/data` contains Hub state: canonical Brain Markdown, Obsidian Library projection, Authoring staging and checkpoints, indexes, audit ledger, registry manifests, and signing keys.
+- `hub/obsidian-config` contains the browser desktop profile. Canonical Brain content is not stored there.
 
 Both directories are intentionally ignored by git.
 

@@ -21,11 +21,15 @@ Being in the same Tailnet is necessary but not sufficient for mutation or promot
 | Promoter | Contributor | Publish validated releases allowed by policy |
 | Admin | Retention, roles, recovery, and keys | Channels and trust policy |
 
+The Obsidian filesystem bridge is a narrower local principal, not a Tailnet role. It records accepted filesystem writes as `local:obsidian-authoring` and can only capture or update supported Brain records. It cannot link records, propose candidates, publish releases, or promote skills. Use authenticated MCP or HTTP when an individual human or agent identity must appear in provenance and audit events.
+
 ## Security invariants
 
 - No public Hub endpoint or Tailscale Funnel.
 - No Hub or Obsidian Docker port bound beyond host loopback.
-- No shared Brain vault or `.skillloom` network mount.
+- No shared canonical Brain vault or `.skillloom` network mount.
+- No direct write access to the Obsidian `Library/` projection or canonical Brain files.
+- No Obsidian Authoring write can publish or promote a skill.
 - No trust based only on source IP or caller-supplied headers.
 - No Brain artifact executes as instruction without governed promotion.
 - No candidate publishes without validation of its immutable snapshot.
@@ -55,8 +59,10 @@ A client can narrow permissions but cannot broaden them.
 | Interrupted local promotion | Resume or compensate through the local transaction journal |
 | Interrupted Hub upload | Replay with the same idempotency key and recover or expire staging |
 | Interrupted Brain write | Recover staging or preserve the prior revision |
+| Interrupted Obsidian Authoring sync | Preserve staged input and retry from its checkpoint |
 | Duplicate request | Return the recorded idempotent result |
 | Concurrent Brain update | Return a revision conflict without data loss |
+| Stale or invalid Obsidian edit | Preserve it in Authoring conflicts without changing canonical data |
 | Divergent skill patches | Preserve both candidates and require explicit resolution |
 | Index corruption | Rebuild from canonical Markdown and durable audit state |
 | Changed signing key | Stop reconciliation and require explicit re-trust |

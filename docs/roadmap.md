@@ -7,14 +7,14 @@ This file tracks product boundaries that are intentionally not part of the curre
 - Private Main Hub through host Tailscale Serve.
 - Loopback-only Hub and Obsidian Docker services.
 - Client Node and This Machine Only setup roles.
-- Canonical Markdown Brain with rebuildable SQLite search and read-only Obsidian projection.
+- Canonical Markdown Brain with rebuildable SQLite search, a read-only Obsidian Library, and revision-aware Authoring staging.
 - Bounded agent episodes, consolidation, workflow evidence, and rejected-update memory.
 - Governed workflow-to-skill proof, validation, policy, promotion, rollback, and signed stable releases.
 - MCP, HTTP, and local bridge access for Brain and registry operations.
 
 ## Open work
 
-- Audited external-revision support for native Obsidian authoring.
+- Per-user attribution for Obsidian authoring through an authenticated API-backed editor or plugin. The filesystem bridge records a synthetic local actor.
 - Review and quarantine registry channels beyond the current stable reader contract.
 - Byte-range continuation when package sizes justify partial-download recovery.
 - Operator-run multi-device Tailnet acceptance and recurring backup and restore drills.

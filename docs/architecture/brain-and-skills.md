@@ -30,7 +30,7 @@ The Hub stores canonical Brain artifacts as Markdown plus attachments. SQLite co
 - Full-text search data.
 - Idempotency records and audit events.
 
-Markdown is the content source of truth. SQLite and the Obsidian projection are rebuildable from canonical artifacts and durable audit state.
+Canonical Markdown is the content source of truth. SQLite and the read-only Obsidian Library projection are rebuildable from canonical artifacts and durable audit state. Obsidian Authoring files are staged inputs and conflict evidence, not a second source of truth.
 
 ### Skill registry
 
@@ -70,7 +70,7 @@ The lifecycle has no direct Brain-to-execution edge. Missing, failed, stale, or 
 
 ## Automatic curation
 
-Hermes mode follows a bounded search-before-write contract:
+Hermes mode follows a bounded search-before-write contract through authenticated MCP or HTTP under Contributor capability:
 
 1. Record a redacted local observation.
 2. Search for an existing durable record.
@@ -80,6 +80,8 @@ Hermes mode follows a bounded search-before-write contract:
 
 Hub unavailability degrades shared recall and curation without blocking local work or fabricating success.
 
+Hermes does not edit canonical Markdown directly. The mode controls when curation runs, while Hub capabilities still control whether its authenticated actor may capture or update Brain records. It cannot use Brain curation to bypass the skill candidate and promotion lifecycle.
+
 ## Concurrency
 
 Brain updates include `baseRevision` and `requestId`. A matching revision is written through staging and atomic replacement. A replayed request returns the original result. A changed revision produces a deterministic conflict instead of last-write-wins.
@@ -88,4 +90,13 @@ Skill patches include the base release hash. Divergent patches are preserved as 
 
 ## Human browsing
 
-Obsidian receives a read-only derived projection. It can browse links, sources, health views, and knowledge categories without becoming a second writable source of truth. Authenticated MCP and HTTP APIs remain the mutation boundary.
+Obsidian exposes a read-only `Library/` projection alongside writable staging:
+
+- `Authoring/Inbox/` stages new notes, facts, decisions, projects, memories, claims, entities, and concepts.
+- `Authoring/Curated/` stages edits to those supported mutable types that carry a canonical artifact ID and base revision.
+- `Authoring/Evidence/` stores the exact source snapshot for each accepted change and is system-maintained.
+- `Authoring/Conflicts/` preserves edits that fail validation or revision checks.
+
+After a file settles, the authoring bridge submits supported changes through BrainService. Accepted captures and updates receive the same revision, provenance, idempotency, audit, projection refresh, and conflict behavior as other Brain mutations. It never writes canonical files in place and never silently applies last-write-wins.
+
+Filesystem edits are attributed to the synthetic actor `local:obsidian-authoring` because the browser desktop cannot prove the individual Tailnet user behind a file change. Authenticated MCP and HTTP remain the path for per-user and per-agent attribution. The local authoring actor has no skill publication or promotion path.

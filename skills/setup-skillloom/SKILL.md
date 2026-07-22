@@ -1,6 +1,6 @@
 ---
 name: setup-skillloom
-description: Install or connect Skillloom from the plugin, including the private Docker Hub, read-only Obsidian Web UI, private host Tailscale Serve, local agent integrations, and exact URLs and ports. Use when a user installs Skillloom, pastes a Skillloom Hub URL, adds another tailnet device, asks to host the second brain, or asks how to open Obsidian.
+description: Install or connect Skillloom from the plugin, including the private Docker Hub, governed Obsidian Web UI, private host Tailscale Serve, local agent integrations, and exact URLs and ports. Use when a user installs Skillloom, pastes a Skillloom Hub URL, adds another tailnet device, asks to host the second brain, or asks how to open Obsidian.
 ---
 
 # Setup Skillloom
@@ -52,7 +52,9 @@ Report both surfaces from command output, not from guessed hostnames:
 - Hub API: host MagicDNS HTTPS port 443, internal port 8787.
 - Obsidian Web UI: same host MagicDNS name on HTTPS port 8443, internal port 3000.
 
-The Obsidian-mounted Skillloom vault is read-only. Agents and users write Brain records through the authenticated Skillloom MCP or HTTP API so revisions and audit records remain valid. Do not expose container ports, enable Funnel, mount the Docker socket, disable seccomp, or make the Brain vault writable.
+Report the Obsidian trust zones after setup: `Library/` is the read-only canonical projection; `Authoring/Inbox/` stages new supported knowledge records; `Authoring/Curated/` stages revision-aware edits; `Authoring/Evidence/` preserves accepted source snapshots; and `Authoring/Conflicts/` preserves rejected or stale changes. Accepted Authoring changes pass through BrainService. Filesystem changes are attributed to `local:obsidian-authoring`, so use authenticated MCP or HTTP when per-user or per-agent attribution matters. Tell the user not to edit Evidence or Conflicts in place. Do not expose container ports, enable Funnel, mount the Docker socket, disable seccomp, make `Library/` writable, or describe Authoring as a skill promotion path.
+
+Tell the user that the simplest capture is an ordinary `.md` file in `Authoring/Inbox/`; without Skillloom metadata it becomes a private note titled from the filename.
 
 ## This Machine Only
 
