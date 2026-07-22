@@ -1,36 +1,40 @@
-# Skillloom Hub on Tailscale
+# Skillloom private Hub
 
-This compose bundle runs one private Hub and one read-only Obsidian Web UI for a tailnet. Tailscale is the only network owner. The Hub binds to `127.0.0.1:8787` and Obsidian to `127.0.0.1:3000` inside the shared namespace. Tailscale Serve publishes `svc:skillloom` as `https://skillloom.<MagicDNSSuffix>` and `svc:skillloom-obsidian` as `https://skillloom-obsidian.<MagicDNSSuffix>`, both on HTTPS port `443` inside the tailnet only.
+This compose bundle runs one private Skillloom second-brain Hub and one read-only Obsidian Web UI on a machine that is already signed in to Tailscale. Docker stays local. Tailscale Serve on the host publishes private HTTPS URLs to devices in the same tailnet.
 
-## Prerequisites
+Default surfaces:
+
+- Hub API: host MagicDNS HTTPS port `443`, forwarded to `http://127.0.0.1:8787`
+- Obsidian Web UI: same host MagicDNS name on HTTPS port `8443`, forwarded to `http://127.0.0.1:3000`
+
+Requirements:
 
 - Docker Compose v2.
-- Tailscale container image v1.92.0 or newer.
-- A reusable tagged auth key allowed to advertise `tag:skillloom-hub`. Do not use an ephemeral key because the Hub must preserve its node identity across container restarts.
-- Tailscale Services named `svc:skillloom` and `svc:skillloom-obsidian`, approved for the tagged device or covered by the example auto-approver policy.
-- Tailnet policy grants with `skillloom.io/cap/skillloom` app capabilities for the human users and tagged agents that should use the Hub.
+- Tailscale CLI signed in on the host.
+- Tailnet policy grants with `skillloom.io/cap/skillloom` app capabilities for users and tagged agents that should read, write, or publish through the Hub.
 - On Linux bind mounts, precreate `hub/data` with mode `0700` and ownership for uid `1000`, or equivalent host ownership that lets the runtime image's `node` user read and write it. The backup user must also be able to read it.
 
-Do not enable Funnel for this service.
+Do not enable Funnel. Do not expose Docker ports beyond `127.0.0.1`. Do not mount the Docker socket into Obsidian. Do not make the Brain vault writable inside Obsidian.
 
-## Bootstrap
+## Plugin path
 
-The supported plugin path is:
+Use the bundled setup skill when possible. It asks only whether this machine is the Main Hub, a Client Node, or This Machine Only, then prints dynamic guidance from allowlisted official docs or installed CLI help. Prefer that generated plan over copied setup steps when Tailscale or Docker behavior changes.
+
+For the Main Hub host:
 
 ```sh
-export TS_AUTHKEY=<tagged-reusable-key>
-skillloom host install
+skillloom setup --role main-hub --target auto --hub auto --scope user
 skillloom host status
 ```
 
-The key is read from the process environment for first authentication and is not written to `~/.skillloom/host/host.env`. The command prints the generated policy path and both HTTPS URLs. Keep the key out of chat and shell history where possible.
+The Main Hub setup flow creates private state under `~/.skillloom/host`, starts the loopback-only Docker services after consent, configures host Tailscale Serve from the authenticated host session, installs local integrations, and prints both URLs plus the generated policy path if a human or admin needs to update tailnet grants. Use `skillloom host install` only for advanced/manual recovery when the one-flow setup output explicitly says the host stack must be reinstalled.
 
-For manual repository deployment:
+Auth keys, sidecar Tailscale containers, and `svc:*` Tailscale Services are advanced headless or team variants only. They are not the normal personal setup path, and users should not paste secret-bearing values into chat.
+
+## Manual repository deployment
 
 1. Copy `hub/.env.example` to `hub/.env`.
-2. Replace `TS_AUTHKEY` with a fresh reusable tagged auth key.
-3. Add or merge `hub/policy.example.hujson` into the tailnet policy and approve the Service.
-4. On Linux, prepare the data bind mount before compose creates it as root:
+2. Prepare the data bind mount on Linux if needed:
 
 ```sh
 mkdir -p hub/data
@@ -38,27 +42,32 @@ chmod 700 hub/data
 sudo chown 1000:1000 hub/data
 ```
 
-5. Start the stack:
+3. Start the stack:
 
 ```sh
 docker compose --env-file hub/.env -f hub/compose.yaml up -d --build
 ```
 
-6. Verify:
+4. Configure host Tailscale Serve from the authenticated host session. Verify the current syntax with the official Tailscale docs or `tailscale serve --help` before running manual fallback commands:
 
 ```sh
-docker compose -f hub/compose.yaml ps
-docker compose -f hub/compose.yaml exec tailscale tailscale serve status
+tailscale serve --bg --https=443 http://127.0.0.1:8787
+tailscale serve --bg --https=8443 http://127.0.0.1:3000
+tailscale serve status
 ```
 
-Run live deployment acceptance only after the stack is started and tailnet policy is approved. Choose one non-secret run nonce of 16 to 128 safe characters and use the same MagicDNS HTTPS origin in every phase:
+The Serve status must reference both `127.0.0.1:8787` and `127.0.0.1:3000`, and must not mention Funnel.
+
+## Live acceptance
+
+Run live deployment acceptance only after the stack is started and private Serve is configured. Choose one non-secret run nonce of 16 to 128 safe characters and use the same bare MagicDNS HTTPS Hub origin in every phase:
 
 ```sh
 RUN_NONCE=acceptance-20260721T120000Z
-HUB_URL=https://skillloom.<MagicDNSSuffix>
+HUB_URL=https://main-hub.<MagicDNSSuffix>
 ```
 
-Run the server phase from the Hub Docker host and repository root. It verifies the exact `tailscale`, `skillloom-hub`, and `obsidian` Compose services, private Serve configuration, MagicDNS HTTPS, backend isolation, and persistent Tailscale and Hub identities across restart:
+Run the server phase from the Hub Docker host and repository root. It verifies the exact `skillloom-hub` and `obsidian` Compose services, loopback bindings, private Serve configuration, MagicDNS HTTPS, loopback backend reachability for Serve, and persistent host Tailscale plus Hub identities across restart:
 
 ```sh
 SKILLLOOM_LIVE_ACCEPTANCE=1 \
@@ -112,29 +121,31 @@ SKILLLOOM_ACCEPTANCE_EVIDENCE_DIR="$EVIDENCE_DIR" \
 hub/scripts/live-acceptance.sh
 ```
 
-Aggregation is the only phase that can print `PASS` and exit 0. It requires complete server, contributor, and restricted records with the same run nonce, canonical Hub URL, Hub instance ID, and actor-observed signing-key fingerprint. Missing records exit 3 as incomplete; mismatched or unsafe evidence fails. Records are redacted JSON and never contain Tailscale auth keys, actor login headers, response bodies, request IDs, or signing keys. A live run was not possible in the development environment used to build this harness, so operator-produced aggregate evidence remains a deployment gate.
+Aggregation is the only phase that can print `PASS` and exit 0. It requires complete server, contributor, and restricted records with the same run nonce, canonical Hub URL, Hub instance ID, and actor-observed signing-key fingerprint. Missing records exit 3 as incomplete; mismatched or unsafe evidence fails. Records are redacted JSON and never contain Tailscale auth keys, actor login headers, response bodies, request IDs, or signing keys.
 
-Before applying the example policy, replace both example email addresses in the `groups` block and their matching `subject: "user:..."` fields. A user's devices receive the app capability because the policy `src` is that user's group, so no per-device policy grant is needed.
+## Clients
 
-Give ordinary users only `reader` and `contributor`: they can search, capture, update, link, read skills, and propose a skill release. Give `promoter` only to the named person or small group that may publish a proposed skill as the shared stable release. A promoter grant must contain `reader`, `contributor`, and `promoter`, as the example does.
-
-Each human identity must appear in exactly one Skillloom app-capability grant. If someone should become a promoter, move that identity from `group:skillloom-contributors` to `group:skillloom-promoters` and update the matching `subject`; do not place the same email in both groups. The Hub rejects conflicting role arrays rather than guessing which privilege applies. Keep the groups explicitly named. Do not replace them with `autogroup:member`, a broad tailnet group, or a catch-all grant unless every tailnet user is intentionally authorized.
-
-Each client machine then runs interactive Skillloom setup:
+Each client machine runs interactive Skillloom setup:
 
 ```sh
-skillloom setup --target auto --hub auto --scope user
+skillloom setup --role client-node --target auto --hub auto --scope user
 ```
 
-The client discovers `svc:skillloom`, uses `https://skillloom.<MagicDNSSuffix>` as the Hub URL, asks the user to trust the Hub identity and signing key, and keeps its local `.skillloom` state private to that machine. Use `--yes` only when an explicit noninteractive workflow accepts that trust decision.
-
-If you intentionally want a local-only install without Hub discovery or trust verification, run:
+If a credential-free Hub URL was supplied, pass it explicitly:
 
 ```sh
-skillloom setup --target auto --hub local --scope user
+skillloom setup --role client-node --target auto --hub auto --hub-url https://main-hub.<MagicDNSSuffix> --scope user
 ```
 
-`--hub auto` fails clearly when the Hub is unreachable or Brain read verification is denied; it does not silently report a local-only Hub setup.
+The client asks the user to trust the Hub identity and signing key, then keeps its local `.skillloom` state private to that machine. Use `--yes` only when an explicit noninteractive workflow accepts that trust decision.
+
+Before applying the example policy, replace both example email addresses in the `groups` block and their matching `subject: "user:..."` fields. Give ordinary users only `reader` and `contributor`. Give `promoter` only to the named person or small group that may publish a proposed skill as the shared stable release. If someone should become a promoter, move that identity from `group:skillloom-contributors` to `group:skillloom-promoters` and update the matching `subject`; do not place the same email in both groups. Do not replace them with `autogroup:member`, a broad tailnet group, or a catch-all grant unless every tailnet user is intentionally authorized.
+
+For a local-only install without Hub discovery or trust verification:
+
+```sh
+skillloom setup --role local-only --target auto --hub local --scope user
+```
 
 Import shared Hub records without changing local installs:
 
@@ -150,35 +161,18 @@ skillloom sync --apply
 
 The same Skillloom plugin and MCP bridge work for Claude Code, Codex, and any number of client machines. Local `.skillloom` roots remain per-device, so offline and local-only workflows continue without a Hub connection. The Hub is not a shared mutable vault mount.
 
-## Hermes automation and Hub availability
+## Brain and Obsidian boundary
 
-The Hub serves the same Brain and skill registry regardless of local mode. The client mode controls four dimensions:
-
-| Preset | Review trigger | Brain capture | Retrieval | Skill promotion |
-| --- | --- | --- | --- | --- |
-| `manual` | `manual` | `manual` | `explicit` | `manual` |
-| `policy` | `manual` | `manual` | `explicit` | `policy` |
-| `hermes` | `task-end` | `auto-curated` | `auto-bounded` | `policy` |
-
-On Claude Code, packaged lifecycle hooks can request bounded high-confidence recall at SessionStart and automatic curation after a non-trivial task. Codex and hosts without compatible plugin hooks keep the same MCP and skill operations, but their Hermes `hostLifecycle` is `invoked` instead of `automatic`; the workflow must be invoked by the user or host. Check the resolved profile and host capability with `skillloom status --json`.
-
-Hermes curation searches before it writes. It either updates a matching record by revision, links distinct related records, or creates one idempotent inbox record. It does not persist full transcripts, credentials, raw tool output, speculative claims, or prompt-injection instructions. If the Hub is unreachable, the local observation may record the attempt, but Skillloom must not report a shared Brain write as successful. Existing local skills remain usable and the task continues.
-
-The Hub exposes agent-facing MCP and HTTP APIs plus a hardened Obsidian browser surface. The Brain vault mount inside Obsidian is read-only, terminal and sudo access are disabled, sharing is disabled, and no container port is published on the host. Direct Obsidian Desktop, network-share, or filesystem-sync writes to the live vault remain unsupported because they bypass revision and audit enforcement. Native Obsidian authoring remains a deferred synchronization adapter.
-
-## Identity model
+The Hub serves the same Brain and skill registry regardless of local mode. The Hub exposes agent-facing MCP and HTTP APIs plus a hardened Obsidian browser surface. The Brain vault mount inside Obsidian is read-only, terminal and sudo access are disabled, sharing is disabled, and no Docker socket is mounted. Direct Obsidian Desktop, network-share, or filesystem-sync writes to the live vault remain unsupported because they bypass revision and audit enforcement. Native Obsidian authoring remains a deferred synchronization adapter.
 
 Tailscale Serve strips spoofed incoming identity and app-capability headers before forwarding. Human-owned devices can provide a user login header. Tagged devices do not provide a user login, so Skillloom must authorize tagged agents from the signed app capability value, not from IP address or hostname.
 
-## Persistence
+## State, backup, and recovery
 
 - `hub/data` contains Hub state: brain Markdown, indexes, audit ledger, registry manifests, and signing keys.
-- `hub/tailscale-state` contains the node key and Tailscale state.
 - `hub/obsidian-config` contains the browser desktop profile. It does not contain a writable copy of the Brain vault.
 
 Both directories are intentionally ignored by git.
-
-## Backup
 
 The safe default is a stopped-Hub snapshot. Do not run `backup.sh` against a live Hub unless the service has already stopped writes. The compose wrapper stops the Hub, runs the snapshot, and starts it again through a trap.
 
@@ -188,8 +182,6 @@ hub/scripts/backup-compose.sh backups
 
 The backup script writes a tarball plus a checksum manifest. Encrypt the resulting tarball with your own backup system if it leaves the machine.
 
-## Restore
-
 Stop the Hub, restore into an empty data directory, then start it:
 
 ```sh
@@ -198,12 +190,6 @@ hub/scripts/restore.sh backups/skillloom-hub-data-YYYYmmddTHHMMSSZ.tar.gz hub/da
 docker compose -f hub/compose.yaml start skillloom-hub
 ```
 
-## Key rotation
-
 Hub signing keys are create-once server state. Do not auto-rotate silently. To rotate, export the new public key, update clients through an explicit trust migration, then revoke the old key after every active client has pinned the new key.
 
-## Failure recovery
-
-- If Serve is not configured, rerun the tailscale container. The entrypoint reapplies `tailscale serve` idempotently.
-- If the Hub is unhealthy, keep Tailscale running and inspect Hub logs first.
-- If `svc:skillloom` resolves to an unexpected identity, clients must fail closed and require explicit trust reset.
+If Serve is not configured, rerun `skillloom host install` or the host `tailscale serve` commands above. If the Hub is unhealthy, inspect Hub logs before changing Tailscale settings.

@@ -1,7 +1,8 @@
 node_modules/
 dist/
 .skillloom/
-docs/
+docs/superpowers/
+docs/verification/
 work/upstream/
 .lean-ctx/
 .omx/

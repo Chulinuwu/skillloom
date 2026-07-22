@@ -2,7 +2,7 @@
 
 ![Skillloom weaving a private second brain and portable Agent Skills](assets/skillloom-hero.webp)
 
-Private second brain and governed Agent Skill lifecycle for Claude Code, Codex, and every machine in your Tailnet.
+Private second brain for human knowledge, agent memories, workflows, and governed portable Agent Skills across Claude Code, Codex, and every machine in your Tailnet.
 
 [![npm version](https://img.shields.io/npm/v/%40chulinxz%2Fskillloom.svg)](https://www.npmjs.com/package/@chulinxz/skillloom)
 [![CI](https://github.com/Chulinuwu/skillloom/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Chulinuwu/skillloom/actions/workflows/ci.yml)
@@ -12,101 +12,87 @@ Private second brain and governed Agent Skill lifecycle for Claude Code, Codex, 
 
 ![Skillloom capture, validate, and promote demo](assets/demo.webp)
 
-An agent solves a difficult problem on one machine. A week later, another agent hits the same problem on another machine and starts again from zero. The useful answer existed, but it was trapped in an old session.
+An agent solves a hard problem on one machine. A week later, another agent hits the same problem on another machine and starts from zero. The useful answer existed, but it was trapped in a session log.
 
-Skillloom gives those agents a private second brain that survives sessions and travels across devices. Agents read and write structured Brain records through MCP. People can browse the same knowledge in a hosted Obsidian Web UI. Install the same plugin on another Tailnet machine, connect it to the Hub, and that machine can use the same Brain without sharing a mutable filesystem.
+Skillloom makes that knowledge durable. Agents write bounded Brain records through MCP or HTTP. People browse the same Markdown Brain in a hosted, read-only Obsidian Web UI. When a workflow proves reusable, Skillloom can turn it into an immutable skill candidate, validate it, enforce policy, and promote it transactionally into Claude Code, Codex, or another portable agent target.
 
-Skills are part of that Brain, but they are not the whole Brain. A note can record what happened or why a decision was made. A skill is a reusable procedure that an agent may execute again. Skillloom keeps that distinction clear: knowledge can be captured as a Brain record, while a skill must pass validation, policy, and an auditable promotion process before it reaches Claude Code or Codex.
+Skills are part of the second brain, not the whole thing. Notes, facts, sources, decisions, project context, memories, and workflow evidence stay as knowledge. Only a validated and approved skill package becomes executable agent instruction.
 
-The learning loop is adapted from Hermes Agent, but conversations, tools, model routing, and execution stay inside the host agent. Skillloom owns the durable layer: Brain records, immutable skill candidates, trust findings, installation checkpoints, recovery, and rollback.
+## Mental model
 
-## Why Skillloom?
+| Layer | What it stores | Who writes | How it is trusted |
+| --- | --- | --- | --- |
+| Brain | Notes, facts, sources, decisions, project context, memories, and workflow evidence | Agents through authenticated tools | Revision checks, provenance, idempotency, audit |
+| Workflow evidence | What worked, what failed, verifier results, and base artifact hashes | Host agent and Skillloom services | Bounded capture, secret redaction, replay-safe records |
+| Skill candidates | Immutable proposed skill packages | Agent or human | Snapshot hashing, validation, scanner findings |
+| Skill releases | Approved portable Agent Skills | Policy or promoter | Server-side validation, signed registry, transactional local promotion |
+| Obsidian Web UI | Human browsing view over the Brain | Read-only surface | Writes stay behind authenticated Skillloom APIs |
 
-Chat history is a poor shared memory. It is tied to one session, full of temporary context, and awkward for another agent to search. Skillloom keeps bounded records such as notes, facts, decisions, sources, projects, and memories. It does not persist full transcripts.
-
-Copying a skill directory installs whatever is there at that moment. It does not preserve what the agent proposed, why it was accepted, what was scanned, which targets changed, or how to safely undo a partial install.
-
-| Plain folder copy | Skillloom |
-| --- | --- |
-| Mutable source copied directly | Immutable candidate snapshot |
-| Review depends on the current agent turn | Deterministic structure and trust scan |
-| One destination at a time | Transactional Claude Code and Codex promotion |
-| No durable history | Append-only journal and promotion records |
-| Manual cleanup after a bad update | Hash-protected rollback and crash recovery |
-
-Local-first means every device keeps its policy, candidates, audit trail, backups, and locks under its own `.skillloom/` store. Skillloom does not require an account, telemetry service, or vendor-hosted control plane. The optional Hub is hosted by you inside your Tailnet, and local workflows keep working when it is unavailable.
-
-## How Skillloom differs from claude-mem
-
-The two projects solve neighboring problems. [claude-mem](https://github.com/thedotmack/claude-mem) centers on automatic session memory: its published architecture uses lifecycle hooks, a model-powered worker, SQLite with FTS5, optional Chroma, MCP search, and a real-time viewer to capture observations and bring compressed context into later sessions. [Read the upstream architecture](https://docs.claude-mem.ai/architecture/overview).
-
-Skillloom centers on curated, shared knowledge and the governed boundary between knowledge and executable Agent Skills:
-
-| Concern | claude-mem | Skillloom |
-| --- | --- | --- |
-| Primary job | Preserve episodic continuity across agent sessions | Share durable knowledge and governed skills across Tailnet machines |
-| Capture model | Automatically observe session activity, then compress it | Capture bounded notes, facts, decisions, projects, sources, and memories; Hermes curates the safe path automatically |
-| Retrieval | Automatic context injection plus progressive MCP search | Explicit search in `manual` and `policy`; bounded automatic recall in `hermes` |
-| Human surface | Purpose-built real-time memory viewer | Read-only Obsidian Web UI over an auditable Markdown Brain |
-| Executable skills | Memory search is a skill-facing capability | Candidate snapshots, validation, policy, quarantine, transactional promotion, recovery, and rollback |
-
-The shortest distinction is: claude-mem helps an agent remember what happened; Skillloom helps many agents share what is worth keeping, then safely turn proven procedures into reusable skills. The layers may be complementary, but Skillloom does not claim tested co-installation until hook ordering, duplicate capture, context injection, and latency have been exercised together.
-
-## A shared brain inside your Tailnet
-
-The private Hub turns independent Skillloom installations into one shared second brain. A laptop running Codex and a server running Claude Code can use it as long as they are in the same Tailnet and have the required grants. Future agent tools can connect through the same MCP or HTTP boundary. Each client still keeps a local store, so the Hub is a synchronization and access boundary rather than a network-mounted vault.
-
-The Hub service ID is `svc:skillloom`, but clients discover and use the MagicDNS URL `https://skillloom.<MagicDNSSuffix>`, never `https://svc:skillloom`.
-
-The plugin's `$setup-skillloom` workflow is the primary installer. To host the stack, export a reusable tagged `TS_AUTHKEY` locally, never into chat, and let the workflow run `skillloom host install`. It creates private state under `~/.skillloom/host`, starts Docker, and prints the generated tailnet policy path. An admin still owns the explicit policy and Service approval decisions. Do not enable Funnel.
-
-Each client configures trust interactively:
-
-```bash
-skillloom setup --target auto --hub auto --scope user
-```
-
-Use `--yes` only for explicit noninteractive acceptance. `skillloom sync` imports available Hub records as a dry run, and `skillloom sync --apply` applies them transactionally.
-
-The same Skillloom plugin and bundled MCP bridge work across Claude Code, Codex, and many machines without a separate global CLI install. Each device keeps its own local `.skillloom` root, so offline and local-only workflows continue, and the Hub is not a shared mutable vault mount.
-
-The hosted stack includes a hardened Obsidian Web UI at `https://skillloom-obsidian.<MagicDNSSuffix>` on HTTPS port `443`; its internal container port is `3000`. The Skillloom vault is mounted read-only. Agents and users write through authenticated MCP or HTTP calls so revisions and audit records remain valid. Direct Obsidian, network-share, and filesystem-sync writes remain unsupported until the external-revision adapter exists.
+Local-first still matters. Every machine keeps its own `.skillloom/` store for local policy, candidates, operations, backups, locks, installed targets, cached Hub state, and pending writes. The optional Hub is a private synchronization and access boundary inside your Tailnet, not a shared mutable filesystem.
 
 ## Quick start
 
-Install the Skillloom plugin on each Claude Code or Codex machine, start a new task, and invoke `$setup-skillloom`. The plugin bundles its setup runner and MCP bridge, so this path does not require a global `skillloom` binary.
+Install the Skillloom plugin on each Claude Code or Codex machine, start a new task, and invoke `$setup-skillloom`. The plugin bundles the setup runner and MCP bridge, so the normal path does not require a global `skillloom` binary.
 
-On the first host, export a tagged reusable Tailscale auth key in the local terminal, never in chat:
+The setup skill asks at most one role question before setup side effects:
 
-```bash
-export TS_AUTHKEY=<tagged-reusable-key>
-```
+| Role | Choose this when | What setup handles |
+| --- | --- | --- |
+| Main Hub | This machine should host the private second brain | Installs local integrations, checks Docker and Tailscale, starts the loopback-only Docker stack after consent, configures private Tailscale Serve, and prints the Hub, Obsidian, and policy outputs |
+| Client Node | This machine should use an existing Hub | Accepts a pasted credential-free Hub URL or discovers a Hub, asks for trust, verifies Brain read access, reconciles releases, and installs local integrations |
+| This Machine Only | No shared Hub is needed | Installs local integrations and keeps all state on this machine |
 
-The setup workflow asks for consent, starts the private Docker stack, and prints the generated Tailscale policy path plus both URLs. On every additional machine, invoke the same skill and paste the credential-free Hub URL:
+If the user pastes a credential-free Hub URL, setup treats the machine as a Client Node. If the user asks for local-only, setup treats it as This Machine Only.
 
-- Hub API: `https://skillloom.<MagicDNSSuffix>` on HTTPS port `443`, internal port `8787`
-- Obsidian Web UI: `https://skillloom-obsidian.<MagicDNSSuffix>` on HTTPS port `443`, internal port `3000`
+Setup does not ask users to paste Tailscale secrets into chat. It uses the host's authenticated Tailscale session for the default Main Hub path. If Docker, Tailscale login, HTTPS enablement, plugin trust, or tailnet policy approval is missing, setup stops at that human/admin boundary and prints the exact remaining action.
 
-No Docker application port is published to the LAN or internet. Tailscale Serve owns external HTTPS access. The Obsidian vault is read-only; agents write through authenticated Skillloom MCP or HTTP calls so revision and audit history remain valid.
+Changing Tailscale and Docker instructions age quickly, so Skillloom does not bake those steps into the plugin prompt. The setup runner collects current guidance from allowlisted official docs or installed CLI help, records source URLs or command help, fetched time, page date when available, and content hash, then prints a source-bound plan.
 
-The CLI is optional for people who want direct terminal control:
+Default Hub surfaces after Main Hub setup:
 
-```bash
-npm install --global @chulinxz/skillloom@0.3
-skillloom init
-```
+- Hub API: `https://<hub-host>.<MagicDNSSuffix>` on Tailnet HTTPS port `443`, forwarded to `http://127.0.0.1:8787`.
+- Obsidian Web UI: `https://<hub-host>.<MagicDNSSuffix>:8443` on Tailnet HTTPS port `8443`, forwarded to `http://127.0.0.1:3000`.
 
-Capture, validate, and promote one candidate:
+No Docker application port is published to the LAN or internet. Tailscale Serve owns private HTTPS access. Do not enable Funnel for the Hub.
 
-```bash
-skillloom capture ./draft-skill --created-by agent
-skillloom validate <candidate-id>
-skillloom promote <candidate-id> --target claude,codex --scope project --yes
-```
+## Obsidian access
+
+Open the Obsidian URL printed by `$setup-skillloom` or `skillloom host status` from a device in the same Tailnet. The hosted vault is mounted read-only.
+
+Use Obsidian to browse the Brain, graph connections, inspect sources, and read agent-maintained knowledge. Do not edit the live vault through Obsidian Desktop, network shares, Taildrive, SMB, NFS, or SSHFS yet. Those paths bypass Skillloom revision and audit checks. Agents and users should write through authenticated Skillloom MCP or HTTP tools until the external-revision adapter exists.
+
+## How Skillloom differs from claude-mem
+
+The projects are adjacent, not direct replacements.
+
+| Concern | claude-mem | Skillloom |
+| --- | --- | --- |
+| Primary job | Automatic session memory and context continuity | Curated shared knowledge plus governed skill lifecycle |
+| Capture | Hooks observe work and compress observations | Bounded Brain records and explicit or Hermes-curated learning decisions |
+| Retrieval | Automatic context injection and progressive memory search | Explicit Brain search in `manual` and `policy`; bounded recall in `hermes` |
+| Human surface | Purpose-built memory viewer | Read-only Obsidian Web UI over a Markdown Brain |
+| Skills | Memory search can be skill-facing | Candidate, validation, policy, proof, promotion, recovery, rollback, signed registry |
+
+Short version: claude-mem helps an agent remember what happened. Skillloom helps many agents share what is worth keeping, then safely turn proven procedures into reusable skills.
+
+The layers may be complementary, but Skillloom does not claim tested co-installation yet. Hook ordering, duplicate capture, context injection, latency, and retention boundaries need direct integration testing before recommending both as a default stack.
+
+## What Skillloom borrows from Obsidian-first second brains
+
+Projects like [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) show the useful shape: a plain Markdown vault, compounding wiki behavior, source-backed answers, cross-linking, methodology-aware organization, and ongoing knowledge hygiene.
+
+Skillloom takes that second-brain idea and adds an agent-governance boundary:
+
+- Human knowledge, agent memory, workflow evidence, and skills live in one conceptual Brain.
+- Plain Markdown remains browsable in Obsidian.
+- Agent writes go through authenticated tools so revision, provenance, idempotency, and audit stay valid.
+- A Brain note never becomes executable instruction unless it passes the skill candidate lifecycle.
+
+Skillloom does not currently claim automatic whole-vault organization, Obsidian-native authoring sync, or claude-obsidian compatibility.
 
 ## Modes
 
-The three public modes are stable presets over four automation dimensions. They keep the UX simple while making the trust boundary inspectable.
+The three public modes are stable presets over four automation dimensions.
 
 | Preset | Review trigger | Brain capture | Retrieval | Skill promotion |
 | --- | --- | --- | --- | --- |
@@ -122,49 +108,26 @@ skillloom mode hermes
 skillloom mode --json
 ```
 
-`skillloom mode` and `skillloom status` show the resolved profile for people; add `--json` for the machine-readable contract. Stored v1 configuration still contains only the preset name, so existing stores do not need a migration.
+`hermes` is the most automatic mode, but not a permissionless mode. A lifecycle-capable host can request bounded Brain recall at session start and one bounded learning decision at task end. Procedural outcomes still go through immutable candidate capture, validation, policy, quarantine on rejection, and transactional promotion on approval.
 
-The default automatic policy permits only project-scoped Claude Code and Codex destinations, at most 20 files and 256 KiB, with no warnings, danger findings, executable files, or declared host capabilities. Generic directories and user scope require manual approval. Edit `.skillloom/config.json` only when deliberately changing that trust boundary.
+Codex and other hosts that do not expose compatible plugin lifecycle hooks still use the same Brain, skills, and MCP tools, but Hermes lifecycle behavior is invoked by the user or host instead of automatic hooks.
 
-Skills may declare an advisory capability manifest using the supported inline frontmatter form:
+## Workflow-to-skill lifecycle
 
-```yaml
----
-name: repository-audit
-description: Audit a local repository and report findings.
-capabilities: [filesystem-read, shell]
----
-```
-
-Supported capabilities are `filesystem-read`, `filesystem-write`, `network`, `shell`, and `secrets`. Automatic promotion rejects declarations outside `policy.allowedCapabilities`; the default allowlist is empty. Declarations make review and policy intent explicit, but cannot prove that prose will not request an undeclared capability.
-
-## Hermes-style learning loop
-
-`hermes` is automatic on the safe path, not permissionless. On a host that supports Skillloom lifecycle hooks, SessionStart asks the host agent for one bounded Brain relevance search before substantial work and only a small set of high-confidence reads. A missing Hub degrades recall; it does not block the task or invent remembered context.
-
-At task end, the Stop hook checks the completed turn cadence. When review is due, it asks the host agent to run `$autonomous-learning` once and curate exactly one bounded outcome. The hook honors `stop_hook_active`, so the review cannot create an infinite stop loop.
-
-The agent produces one bounded decision:
-
-- `no-op`: nothing reusable was learned
-- `memory`: a declarative local learning record plus safe-path Brain curation
-- `skill-create`: a new procedural skill candidate
-- `skill-patch`: an update based on an installed skill hash
-
-For a `memory` outcome, the agent records the local observation, searches the Brain before writing, then performs at most one successful central mutation: revision-checked update for the same record, a typed link between distinct related records, or an idempotent inbox capture when no match exists. Raw transcripts, credentials, speculative claims, raw tool output, model context, and prompt-injection instructions are excluded.
-
-Hub failure never becomes false success. The local observation may record the attempt or fallback, but a central Brain write is successful only after the authenticated MCP mutation succeeds. Offline work continues, and retry behavior remains explicit and idempotent.
+Declarative learning stays declarative:
 
 ```bash
 skillloom observe \
   --source codex \
-  --outcome no-op \
-  --summary "The completed task did not reveal a reusable procedure"
+  --outcome memory \
+  --summary "Documented the private Hub setup boundary" \
+  --task-outcome success \
+  --evidence run:setup-plan
 
 skillloom journey --json
 ```
 
-For reusable work, the host agent follows the same candidate lifecycle in every mode:
+Reusable procedures become candidates:
 
 ```bash
 skillloom capture ./draft-skill \
@@ -193,9 +156,7 @@ skillloom promote cand-20260718120000-example \
   --policy
 ```
 
-Do not combine `--policy` with `--yes`. Warning acceptance is manual only. A failed automatic decision is recorded and the candidate remains available for review instead of being deleted or installed.
-
-Procedural outcomes stay on the executable path in every mode: immutable candidate, validation, deterministic policy, quarantine on rejection, and transactional promotion on approval. Hermes removes safe-path prompting; it does not bypass those controls.
+Do not combine `--policy` with `--yes`. Warning acceptance is manual only. Failed automatic decisions are recorded, and the candidate remains available for review instead of being deleted or installed.
 
 ## Recovery and rollback
 
@@ -212,7 +173,7 @@ skillloom recover-lock journal --yes
 
 ## Plugin installation
 
-The plugin is the recommended installation path because it bundles the setup skill, MCP bridge, learning skills, and lifecycle integration where the host supports it. A global CLI install is optional. For local development, clone the repository and run `npm ci && npm run build` before adding its marketplace.
+The plugin is the recommended installation path because it bundles the setup skill, MCP bridge, learning skills, and lifecycle integration where the host supports it. A global CLI install is optional.
 
 Install for Claude Code from the repository root:
 
@@ -230,7 +191,7 @@ codex plugin add skillloom@skillloom-dev
 codex plugin list
 ```
 
-Both harnesses discover the same root `skills/` tree and bundled MCP configuration. Claude Code can run the packaged SessionStart and Stop hooks after it trusts the plugin, so Hermes recall and curation can trigger automatically there. Codex and other hosts that do not expose compatible plugin lifecycle hooks still use the same Brain, skills, and MCP tools, but `skillloom status --json` reports their Hermes `hostLifecycle` as `invoked` instead of `automatic`; the user or host must invoke the learning workflow. Start a new session or task after installation, then invoke `$setup-skillloom`. Do the same after an update or a mode change that affects startup context.
+After installation or update, start a new task and invoke `$setup-skillloom`.
 
 The canonical adapters install skills to:
 
@@ -241,17 +202,56 @@ The canonical adapters install skills to:
 | Agents | `<project>/.agents/skills/<skill-name>` | `~/.agents/skills/<skill-name>` |
 | Generic | `<destination>/<skill-name>` | `<destination>/<skill-name>` |
 
+## Optional CLI
+
+Use the CLI directly when you want terminal control instead of plugin-first setup:
+
+```bash
+npm install --global @chulinxz/skillloom@0.3
+skillloom init
+skillloom setup --role local-only --target auto --hub local --scope user
+```
+
+Client Node with a printed or pasted Hub URL:
+
+```bash
+skillloom setup \
+  --role client-node \
+  --target auto \
+  --hub auto \
+  --hub-url https://hub-host.example.ts.net \
+  --scope user
+```
+
+Main Hub as a single setup flow:
+
+```bash
+skillloom setup --role main-hub --target auto --hub auto --scope user
+skillloom host status
+```
+
+Use `skillloom host install` only for advanced/manual recovery when the one-flow setup output explicitly says the host stack must be reinstalled.
+
 ## Security boundary
 
-Skillloom protects the local lifecycle boundary. It rejects symlinks, non-regular files, binary payloads, oversized packages, undeclared executables, unsafe destinations, changed snapshots, and transaction layouts that disagree with durable checkpoints. Mode-aware package hashes cover relative paths, normalized file permissions, and content. Capture validates an isolated staging snapshot before atomically committing the candidate.
+Skillloom protects the local lifecycle boundary. It rejects symlinks, non-regular files, binary payloads, oversized packages, undeclared executables, unsafe destinations, changed snapshots, and transaction layouts that disagree with durable checkpoints. Mode-aware package hashes cover relative paths, normalized file permissions, and content.
 
-Skillloom does not sandbox the host agent, execute semantic analysis, embed an LLM, replace the host runtime, or claim that regex scanning proves behavioral quality. Obfuscated, indirect, novel, or purely natural-language instructions may evade deterministic rules. The host agent and user remain responsible for reviewing requested behavior and granting tool permissions. Scanner rules are deterministic and extensible, while automatic approval only proves that the immutable candidate satisfies the configured structural, capability, and trust policy.
+Skillloom does not sandbox the host agent, execute semantic analysis, embed an LLM, replace the host runtime, or claim that deterministic scanning proves behavioral quality. Obfuscated, indirect, novel, or purely natural-language instructions may evade deterministic rules. The host agent and user remain responsible for reviewing requested behavior and granting tool permissions.
 
 Danger findings always block promotion. Manual warning overrides require both `--accept-warnings` and `--yes`. Executable resources are denied by the default automatic policy even when the package declares them. Live lock owners are never taken over because of elapsed time alone; terminate a genuinely hung owner before recovery.
 
 Hashes created before the mode-aware format remain readable for historical rollback and recovery. Legacy candidates must be recaptured before they can receive the new permission-integrity guarantee.
 
-Runtime state lives under `.skillloom/`: configuration, immutable candidates, learning events, the append-only journal, promotions, operations, backups, staging data, and locks.
+## Architecture
+
+Skillloom keeps its public trust boundaries reviewable without mixing them with operator steps or an internal implementation diary:
+
+- [Hub topology and client synchronization](docs/architecture/hub.md)
+- [Brain and governed skill lifecycle](docs/architecture/brain-and-skills.md)
+- [Security and failure recovery](docs/architecture/security.md)
+- [Public roadmap and explicit boundaries](docs/roadmap.md)
+
+Deployment commands and day-two operations remain in the [Hub operator guide](hub/README.md).
 
 ## Development
 
@@ -269,7 +269,7 @@ npm pack
 
 The manual `Publish npm package` workflow uses npm trusted publishing and `--provenance`. Configure the repository, workflow filename, and `npm` environment as a trusted publisher on npm before running it.
 
-Validate the plugin skills directly when changing their instructions:
+Validate plugin skill instructions after editing them:
 
 ```bash
 python3 /path/to/skill-creator/scripts/quick_validate.py skills/autonomous-learning
