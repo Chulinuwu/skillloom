@@ -13,7 +13,15 @@ export function formatOutput(value: unknown, json: boolean): string {
     const surfaces = value.surfaces
       ? [`hub: ${value.surfaces.hub.url} (HTTPS ${value.surfaces.hub.externalPort})`, `obsidian: ${value.surfaces.obsidian.url} (HTTPS ${value.surfaces.obsidian.externalPort}, internal ${value.surfaces.obsidian.internalPort}, ${value.surfaces.obsidian.access})`]
       : [];
-    return [`setup: ${hub}`, ...surfaces, ...value.targets.map((target) => `${target.target}: ${target.status}`), ""].join("\n");
+    const plan = value.plan ? [
+      `role: ${value.plan.role} (${value.plan.status})`,
+      ...value.plan.sources.map((source) => `source: ${source.title} ${source.url ?? source.kind} ${source.contentHash}`),
+      ...value.plan.sources.flatMap((source) => source.snippets.map((snippet) => `evidence: ${source.title}: ${redactSetupText(snippet)}`)),
+      ...value.plan.steps.map((step) => `${step.action}: ${step.title}${step.command ? ` [${step.command}]` : ""}${step.sourceTitles?.length ? ` source=${step.sourceTitles.join(",")}` : ""}`),
+      ...value.plan.warnings.map((warning) => `warning: ${warning}`)
+    ] : [];
+    const host = value.host ? [`host: ${value.host.status}`, `policy: ${value.host.policyPath}`, ...value.host.nextActions.map((action) => `action: ${action}`)] : [];
+    return [`setup: ${hub}`, ...surfaces, ...host, ...plan, ...value.targets.map((target) => `${target.target}: ${target.status}`), ""].join("\n");
   }
   if (isHostResult(value)) {
     const surfaces = value.surfaces
@@ -60,8 +68,11 @@ export function formatOutput(value: unknown, json: boolean): string {
   }
   return `${JSON.stringify(value)}\n`;
 }
-function isSetupResult(value: unknown): value is { hub: { mode: string; endpoint?: string }; surfaces: null | { hub: { url: string; externalPort: number }; obsidian: { url: string; externalPort: number; internalPort: number; access: string } }; targets: Array<{ target: string; status: string }> } {
+function isSetupResult(value: unknown): value is { hub: { mode: string; endpoint?: string }; host?: null | { status: string; policyPath: string; nextActions: string[] }; surfaces: null | { hub: { url: string; externalPort: number }; obsidian: { url: string; externalPort: number; internalPort: number; access: string } }; targets: Array<{ target: string; status: string }>; plan?: { role: string; status: string; sources: Array<{ title: string; kind: string; url?: string; contentHash: string; snippets: string[] }>; steps: Array<{ action: string; title: string; command?: string; sourceTitles?: string[] }>; warnings: string[] } } {
   return typeof value === "object" && value !== null && "command" in value && value.command === "setup" && "targets" in value && Array.isArray(value.targets);
+}
+function redactSetupText(value: string): string {
+  return value.replace(/\bTS_AUTHKEY\s*=\s*\S+/gu, "TS_AUTHKEY=<redacted>").replace(/tskey-[A-Za-z0-9_-]+/gu, "tskey-<redacted>");
 }
 function isHostResult(value: unknown): value is { status: string; policyPath: string; surfaces: null | { hub: { url: string; externalPort: number }; obsidian: { url: string; externalPort: number; internalPort: number; access: string } }; nextActions: string[] } {
   return typeof value === "object" && value !== null && "command" in value && value.command === "host" && "nextActions" in value && Array.isArray(value.nextActions);

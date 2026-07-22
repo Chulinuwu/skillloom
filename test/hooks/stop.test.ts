@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -10,13 +10,21 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
 test("Hermes Stop blocks once when review cadence is met", async () => {
   const project = await hermesProject();
-  const first = await runStop({ cwd: project, tool_count: 3, stop_hook_active: false });
+  const first = await runStop({ cwd: project, tool_count: 3, stop_hook_active: false, session_id: "session-a", transcript_path: "/tmp/raw-transcript.jsonl" });
   assert.equal(JSON.parse(first).decision, "block");
   const reason = JSON.parse(first).reason as string;
   assert.match(reason, /\$autonomous-learning/u);
   assert.match(reason, /exactly one bounded outcome/u);
   assert.match(reason, /brain_capture, brain_update, or brain_link/u);
   assert.match(reason, /do not claim a central write succeeded/u);
+  assert.match(reason, /queued for background consolidation/u);
+  assert.equal(await runStop({ cwd: project, tool_count: 3, stop_hook_active: false, session_id: "session-a", transcript_path: "/tmp/raw-transcript.jsonl" }), first);
+  const events = await readdir(join(project, ".skillloom", "learning", "events"));
+  const jobs = await readdir(join(project, ".skillloom", "learning", "consolidation", "jobs"));
+  assert.equal(events.length, 1);
+  assert.equal(jobs.length, 1);
+  const event = await readFile(join(project, ".skillloom", "learning", "events", events[0]), "utf8");
+  assert.equal(event.includes("raw-transcript"), false);
   assert.equal(await runStop({ cwd: project, tool_count: 3, stop_hook_active: true }), "");
 });
 

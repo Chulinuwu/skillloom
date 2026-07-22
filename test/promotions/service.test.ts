@@ -15,6 +15,7 @@ import type { PromotionTargetRecord } from "../../src/domain/types.js";
 import { readPromotion } from "../../src/store/promotions.js";
 import { readEvents } from "../../src/store/journal.js";
 import { createSkillFixture, tempDir } from "../helpers/fixtures.js";
+import type { WorkflowProofDecision } from "../../src/policy/workflow-proof.js";
 
 async function capturedCandidate(root: string, mutate?: (source: string) => Promise<void>) {
   const source = await createSkillFixture();
@@ -26,6 +27,24 @@ async function capturedCandidate(root: string, mutate?: (source: string) => Prom
 async function context() {
   const projectRoot = await tempDir("skillloom-project-");
   return { projectRoot, homeDir: await tempDir("skillloom-home-") };
+}
+
+function workflowProof(candidateId: string, packageHash: string, verdict: "passed" | "failed"): WorkflowProofDecision {
+  return {
+    schemaVersion: "skillloom-workflow-proof-v1",
+    decisionId: `proof-${verdict}`,
+    idempotencyKey: "local-proof-op",
+    verdict,
+    workflow: {
+      artifactId: "brain-workflow",
+      revision: "1",
+      contentHash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    candidate: { candidateId, packageHash },
+    verifier: { kind: "replay", summary: verdict, evidence: "node --test local-proof.test.ts" },
+    provenanceHashes: ["sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+    decidedAt: "2026-07-21T00:00:00.000Z"
+  };
 }
 
 test("promotes a fresh canonical package byte-identically to every destination", async () => {
@@ -55,6 +74,27 @@ test("rejects codex and agents collision before staging the shared destination",
   ], { yes: true, acceptWarnings: false }, {
     beforeStage: () => { stageCalls += 1; }
   }), /destinations overlap/);
+  assert.equal(stageCalls, 0);
+  await assert.rejects(() => stat(join(ctx.projectRoot, ".agents", "skills", candidate.metadata.name)), { code: "ENOENT" });
+});
+
+test("stored workflow proof is authoritative over local promotion approval override", async () => {
+  const ctx = await context();
+  const candidate = await capturedCandidate(ctx.projectRoot);
+  const candidatePath = join(ctx.projectRoot, ".skillloom", "candidates", candidate.candidateId, "candidate.json");
+  const stored = JSON.parse(await readFile(candidatePath, "utf8"));
+  stored.governedWorkflowProof = workflowProof(candidate.candidateId, candidate.packageHash, "failed");
+  await writeFile(candidatePath, JSON.stringify(stored, null, 2));
+  let stageCalls = 0;
+  await assert.rejects(() => promoteCandidate(ctx, candidate.candidateId, [
+    { adapter: codexAdapter, scope: "project" }
+  ], {
+    yes: true,
+    acceptWarnings: false,
+    workflowProof: workflowProof(candidate.candidateId, candidate.packageHash, "passed")
+  }, {
+    beforeStage: () => { stageCalls += 1; }
+  }), PromotionPolicyError);
   assert.equal(stageCalls, 0);
   await assert.rejects(() => stat(join(ctx.projectRoot, ".agents", "skills", candidate.metadata.name)), { code: "ENOENT" });
 });

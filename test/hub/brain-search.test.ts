@@ -40,10 +40,34 @@ test("searches title, content, type, and provenance through bounded FTS", async 
       sensitivity: "tailnet",
       provenance: { source: "sqlite-handbook" }
     });
+    await brain.capture({
+      actor,
+      requestId: "search-details-source",
+      type: "workflow",
+      title: "Reusable setup retry",
+      content: "Workflow record.",
+      sensitivity: "tailnet",
+      provenance: {},
+      source: {
+        sourceId: "web:tailscale-serve",
+        capturedAt: "2026-07-22T00:00:00.000Z",
+        contentHash: "sha256:tailscale-doc-source",
+        uri: "https://tailscale.com/docs/features/tailscale-serve"
+      },
+      details: {
+        kind: "workflow",
+        trigger: "serve configuration drift",
+        steps: ["fetch official docs", "plan safe command", "verify healthz"],
+        verifier: "tailnet-health",
+        promotable: false
+      }
+    });
 
-    assert.equal((await brain.search({ actor, query: "Tailscale" }))[0]?.title, "Tailscale service discovery");
+    assert.ok((await brain.search({ actor, query: "Tailscale" })).some((item) => item.title === "Tailscale service discovery"));
     assert.equal((await brain.search({ actor, query: "canonical" }))[0]?.type, "fact");
     assert.equal((await brain.search({ actor, query: "sqlite-handbook" }))[0]?.type, "source");
+    assert.equal((await brain.search({ actor, query: "tailnet-health" }))[0]?.type, "workflow");
+    assert.equal((await brain.search({ actor, query: "tailscale-serve" }))[0]?.type, "workflow");
     assert.deepEqual(await brain.search({ actor, query: "canonical", type: "decision" }), []);
 
     for (let index = 0; index < 52; index += 1) {

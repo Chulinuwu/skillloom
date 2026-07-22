@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { stat } from "node:fs/promises";
+import crypto from "node:crypto";
+import { readFile, stat } from "node:fs/promises";
 import { request } from "node:http";
 import { createServer } from "node:net";
 import { join } from "node:path";
@@ -10,11 +11,26 @@ import { createRuntimeBrainPermissions, createRuntimeRegistryPermissions } from 
 import { createHubRuntime } from "../../src/hub/runtime/service.js";
 import { loadHubRuntimeState } from "../../src/hub/runtime/state.js";
 import { authorizeTailscaleServeRequest } from "../../src/hub/tailscale/headers.js";
+import type { BrainDerivedProjectionPort } from "../../src/hub/brain/index.js";
 import { createHubAuthorizationService, HubAuthorizationError, type HubAuthorizationContext, type HubRole } from "../../src/hub/auth/index.js";
 import { HUB_PROTOCOL_VERSION, parseNegotiationResponse } from "../../src/hub/protocol/index.js";
 import { tempDir } from "../helpers/fixtures.js";
 
 const appCapability = "skillloom.io/cap/skillloom";
+class FailingRuntimeProjection implements BrainDerivedProjectionPort {
+  dirty = false;
+  initialized = false;
+  async initialize(): Promise<void> {
+    this.initialized = true;
+    throw new Error("projection init failed");
+  }
+  async markDirty(): Promise<void> {
+    this.dirty = true;
+  }
+  async refresh(): Promise<void> {
+    throw new Error("projection refresh failed");
+  }
+}
 
 test("runtime config refuses non-loopback binds", () => {
   assert.throws(() => loadHubRuntimeConfig({
@@ -123,6 +139,68 @@ test("runtime server serves unauthenticated health and authenticated hello acros
   await second.close();
 });
 
+test("runtime refreshes Obsidian projection after brain mutations and recovers across restart", async () => {
+  const port = await freePort();
+  const dataDir = await tempDir("skillloom-runtime-projection-");
+  const env = {
+    SKILLLOOM_HUB_BIND_HOST: "127.0.0.1",
+    SKILLLOOM_HUB_PORT: String(port),
+    SKILLLOOM_HUB_DATA_DIR: dataDir,
+    SKILLLOOM_HUB_APP_CAP: appCapability
+  };
+  const first = await createHubRuntime(env);
+  await first.start();
+  let artifactId = "";
+  try {
+    const capture = await postJson(port, "/v1/brain/captures", {
+      type: "note",
+      title: "Runtime projected note",
+      content: "Projection is refreshed by the runtime.",
+      provenance: { source: "runtime-test" },
+      sensitivity: "tailnet"
+    }, authHeaders("alice@example.com", [{ roles: ["contributor"] }]));
+    assert.equal(capture.status, 201);
+    artifactId = (capture.body as { data: { artifact: { id: string } } }).data.artifact.id;
+    assert.match(await readFile(join(dataDir, "brain", "projections", "obsidian", "human-knowledge", "note", `${artifactId}.md`), "utf8"), /Runtime projected note/u);
+  } finally {
+    await first.close();
+  }
+  const second = await createHubRuntime(env);
+  try {
+    assert.match(await readFile(join(dataDir, "brain", "projections", "obsidian", "human-knowledge", "note", `${artifactId}.md`), "utf8"), /Projection is refreshed by the runtime/u);
+  } finally {
+    await second.close();
+  }
+});
+
+test("runtime starts and accepts canonical mutations when injected projection initialization fails", async () => {
+  const port = await freePort();
+  const dataDir = await tempDir("skillloom-runtime-failing-projection-");
+  const projection = new FailingRuntimeProjection();
+  const runtime = await createHubRuntime({
+    SKILLLOOM_HUB_BIND_HOST: "127.0.0.1",
+    SKILLLOOM_HUB_PORT: String(port),
+    SKILLLOOM_HUB_DATA_DIR: dataDir,
+    SKILLLOOM_HUB_APP_CAP: appCapability
+  }, { projection });
+  await runtime.start();
+  try {
+    assert.equal(projection.initialized, true);
+    assert.equal(projection.dirty, true);
+    const capture = await postJson(port, "/v1/brain/captures", {
+      type: "note",
+      title: "Projection failure does not block canonical write",
+      content: "Canonical API remains available.",
+      provenance: {},
+      sensitivity: "private"
+    }, authHeaders("alice@example.com", [{ roles: ["contributor"] }]));
+    assert.equal(capture.status, 201);
+    assert.equal(projection.dirty, true);
+  } finally {
+    await runtime.close();
+  }
+});
+
 function fakeRequest(login: string | undefined, grants: readonly unknown[]) {
   return {
     headers: authHeaders(login, grants)
@@ -152,6 +230,30 @@ async function getJson(port: number, path: string, headers: Record<string, strin
     });
     req.on("error", reject);
     req.end();
+  });
+}
+
+async function postJson(port: number, path: string, body: unknown, headers: Record<string, string>): Promise<{ status: number | undefined; body: unknown }> {
+  return await new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const req = request({
+      host: "127.0.0.1",
+      port,
+      path,
+      method: "POST",
+      headers: {
+        ...headers,
+        "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
+        "content-length": Buffer.byteLength(payload).toString()
+      }
+    }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk: Buffer) => chunks.push(chunk));
+      res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(Buffer.concat(chunks).toString("utf8")) }));
+    });
+    req.on("error", reject);
+    req.end(payload);
   });
 }
 

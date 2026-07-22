@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { createPackageBlob, generateEd25519RegistrySigner, hashPackageBlob } from "../../src/hub/registry/index.js";
+import { registryLayout } from "../../src/hub/registry/registry-layout.js";
+import { deterministicRegistryId } from "../../src/hub/registry/server-hash.js";
 import {
   RegistryAuthorizationError,
   RegistryDivergenceError,
@@ -11,6 +15,7 @@ import {
   type RegistryActor,
   type RegistryPermissionPort
 } from "../../src/hub/registry/server-index.js";
+import type { WorkflowProofDecision } from "../../src/policy/workflow-proof.js";
 import { tempDir } from "../helpers/fixtures.js";
 
 const contributor: RegistryActor = { actorId: "user:contributor@example.com" };
@@ -41,6 +46,24 @@ function skillBlob(body = "Use this shared workflow safely.\n", capabilities = "
       body
     ].join("\n"))
   }]);
+}
+
+function proofDecision(
+  candidateId: string,
+  packageHash: string,
+  workflow: { artifactId: string; revision: string; contentHash: string }
+): WorkflowProofDecision {
+  return {
+    schemaVersion: "skillloom-workflow-proof-v1",
+    decisionId: "proof-registry",
+    idempotencyKey: "registry-proof-op",
+    verdict: "passed",
+    workflow,
+    candidate: { candidateId, packageHash },
+    verifier: { kind: "replay", summary: "passed", evidence: "node --test registry-proof.test.ts" },
+    provenanceHashes: ["sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+    decidedAt: "2026-07-21T00:00:00.000Z"
+  };
 }
 
 async function proposeInput(blob = skillBlob(), baseReleaseHash: string | null = null) {
@@ -78,6 +101,105 @@ test("server validates, persists, signs and publishes immutable registry content
   assert.equal(published.release.payload.packageHash, proposal.candidate.payload.packageHash);
   assert.equal(published.manifest.payload.releases[0]?.releaseId, published.release.payload.releaseId);
   assert.deepEqual(await service.readBlob(published.release.payload.packageHash), skillBlob());
+});
+
+test("workflow proof persists on registry candidate and publish cannot bypass or tamper it", async () => {
+  const root = await tempDir("skillloom-registry-workflow-proof-");
+  const service = await createRegistryService({
+    root,
+    hubInstanceId: "hub-primary",
+    signer: generateEd25519RegistrySigner(),
+    permissions: permissions(),
+    clock: () => new Date("2026-07-21T01:00:00.000Z")
+  });
+  const requestId = randomUUID();
+  const blob = skillBlob();
+  const packageHash = await hashPackageBlob(blob);
+  const candidateId = deterministicRegistryId("candidate", contributor.actorId, requestId);
+  const workflow = {
+    artifactId: "brain-workflow",
+    revision: "1",
+    contentHash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  };
+  const workflowProof = proofDecision(candidateId, packageHash, workflow);
+  const proposal = await service.propose({
+    actor: contributor,
+    requestId,
+    name: "shared-skill",
+    packageBlob: blob,
+    claimedPackageHash: packageHash,
+    baseReleaseHash: null,
+    capabilities: ["filesystem-read"],
+    provenance: [workflow],
+    workflowProof
+  });
+  assert.deepEqual(proposal.candidate.payload.governedWorkflowProof, workflowProof);
+  await assert.rejects(() => service.propose({
+    actor: contributor,
+    requestId,
+    name: "shared-skill",
+    packageBlob: blob,
+    claimedPackageHash: packageHash,
+    baseReleaseHash: null,
+    capabilities: ["filesystem-read"],
+    provenance: [workflow],
+    workflowProof: { ...workflowProof, verifier: { ...workflowProof.verifier, evidence: "changed proof" } }
+  }), RegistryIdempotencyConflictError);
+  await assert.rejects(() => service.publish({
+    actor: promoter,
+    requestId: randomUUID(),
+    candidateId,
+    version: "1.0.0",
+    channel: "stable",
+    workflowProof: { ...workflowProof, candidate: { ...workflowProof.candidate, candidateId: "other-candidate" } }
+  }), RegistryPublishBlockedError);
+  const publishRequestId = randomUUID();
+  const published = await service.publish({
+    actor: promoter,
+    requestId: publishRequestId,
+    candidateId,
+    version: "1.0.0",
+    channel: "stable"
+  });
+  assert.equal(published.release.payload.sourceCandidateId, candidateId);
+  await assert.rejects(() => service.publish({
+    actor: promoter,
+    requestId: publishRequestId,
+    candidateId,
+    version: "1.0.0",
+    channel: "stable",
+    workflowProof
+  }), RegistryIdempotencyConflictError);
+  const manifestBefore = await service.readManifest("stable");
+  const nextRequestId = randomUUID();
+  const nextBlob = skillBlob("Use this updated workflow safely.\n");
+  const nextPackageHash = await hashPackageBlob(nextBlob);
+  const nextCandidateId = deterministicRegistryId("candidate", contributor.actorId, nextRequestId);
+  const nextProof = proofDecision(nextCandidateId, nextPackageHash, workflow);
+  await service.propose({
+    actor: contributor,
+    requestId: nextRequestId,
+    name: "shared-skill",
+    packageBlob: nextBlob,
+    claimedPackageHash: nextPackageHash,
+    baseReleaseHash: published.release.payload.packageHash,
+    capabilities: ["filesystem-read"],
+    provenance: [workflow],
+    workflowProof: nextProof
+  });
+  const candidatePath = join(registryLayout(root).candidates, `${nextCandidateId}.json`);
+  const stored = JSON.parse(await readFile(candidatePath, "utf8"));
+  stored.candidate.payload.governedWorkflowProof.verdict = "failed";
+  await writeFile(candidatePath, JSON.stringify(stored, null, 2));
+  await assert.rejects(() => service.publish({
+    actor: promoter,
+    requestId: randomUUID(),
+    candidateId: nextCandidateId,
+    version: "1.0.1",
+    channel: "stable",
+    workflowProof: nextProof
+  }), RegistryPublishBlockedError);
+  assert.deepEqual(await service.readManifest("stable"), manifestBefore);
 });
 
 test("idempotency is scoped to actor and UUID and rejects changed reuse", async () => {

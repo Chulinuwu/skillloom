@@ -6,6 +6,7 @@ import {
   createBridgeServer,
   type BridgeRemoteBrainCall,
   type BridgeRemoteBrainPort,
+  type BridgeRemoteToolCall,
   type BridgeToolResult
 } from "../../src/bridge/index.js";
 
@@ -15,6 +16,8 @@ test("lists brain and registry tools", async () => {
   const tools = (response?.result as { tools: Array<{ name: string }> }).tools;
   assert.deepEqual(tools.map((tool) => tool.name), [
     "brain_search",
+    "brain_retrieve",
+    "brain_health",
     "brain_read",
     "brain_capture",
     "brain_update",
@@ -24,6 +27,20 @@ test("lists brain and registry tools", async () => {
     "skill_propose",
     "skill_publish"
   ]);
+});
+
+test("accepts every advertised bridge tool name through tools/call", async () => {
+  const calls: BridgeRemoteToolCall[] = [];
+  const server = createBridgeServer({ remote: { call: async (call) => { calls.push(call); return success({ ok: true }); } } });
+  const listed = await server.handle({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
+  const tools = (listed?.result as { tools: Array<{ name: string }> }).tools;
+
+  for (const tool of tools) {
+    const response = await server.handle({ jsonrpc: "2.0", id: tool.name, method: "tools/call", params: { name: tool.name, arguments: {} } });
+    assert.equal(response?.error, undefined);
+  }
+
+  assert.deepEqual(calls.map((call) => call.name), tools.map((tool) => tool.name));
 });
 
 test("forwards tool name and arguments unchanged with mutation request ID", async () => {
@@ -72,6 +89,31 @@ test("read calls omit mutation request ID and preserve remote structured errors"
   assert.equal((response?.result as BridgeToolResult).isError, true);
   assert.deepEqual((response?.result as BridgeToolResult).structuredContent, denied.structuredContent);
 });
+
+test("forwards retrieve and health tools advertised by MCP", async () => {
+  const calls: BridgeRemoteBrainCall[] = [];
+  const server = createBridgeServer({ remote: { call: async (call) => { calls.push(call); return success({ ok: true }); } } });
+  const retrieveArgs = { query: "portable skill memory", tier: "standard", filters: { hasSource: true } };
+
+  await server.handle({
+    jsonrpc: "2.0",
+    id: 12,
+    method: "tools/call",
+    params: { name: "brain_retrieve", arguments: retrieveArgs }
+  });
+  await server.handle({
+    jsonrpc: "2.0",
+    id: 13,
+    method: "tools/call",
+    params: { name: "brain_health", arguments: {} }
+  });
+
+  assert.deepEqual(calls, [
+    { name: "brain_retrieve", arguments: retrieveArgs },
+    { name: "brain_health", arguments: {} }
+  ]);
+});
+
 test("forwards registry mutation tools with request IDs", async () => {
   const calls: unknown[] = [];
   const server = createBridgeServer({ remote: { call: async (call) => { calls.push(call); return success({ candidateId: "candidate-1" }); } } });

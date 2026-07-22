@@ -1,4 +1,5 @@
 import type { SkillCapability } from "../../domain/types.js";
+import { parseWorkflowProofDecision } from "../../policy/workflow-proof-schema.js";
 import { RegistryValidationError } from "./errors.js";
 import type {
   ChannelManifest,
@@ -13,7 +14,7 @@ import type {
 export function parseRegistryCandidate(value: unknown): RegistryCandidate {
   const record = strictRecord(value, [
     "schemaVersion", "hubInstanceId", "sequence", "candidateId", "name", "packageHash", "baseReleaseHash",
-    "divergence", "supersession", "provenance", "capabilities", "validationDigest", "createdAt", "createdBy"
+    "divergence", "supersession", "provenance", "capabilities", "validationDigest", "createdAt", "createdBy", "governedWorkflowProof"
   ], "candidate");
   literal(record.schemaVersion, "skillloom-registry-candidate-v1", "schemaVersion");
   const baseReleaseHash = nullablePackageHash(record.baseReleaseHash, "baseReleaseHash");
@@ -37,6 +38,7 @@ export function parseRegistryCandidate(value: unknown): RegistryCandidate {
     provenance: parseProvenance(record.provenance),
     capabilities: parseCapabilities(record.capabilities),
     validationDigest: digest(record.validationDigest, "validationDigest"),
+    ...(record.governedWorkflowProof === undefined ? {} : { governedWorkflowProof: parseWorkflowProofDecision(record.governedWorkflowProof, registryError, "governedWorkflowProof") }),
     createdAt: timestamp(record.createdAt, "createdAt"),
     createdBy: identifier(record.createdBy, "createdBy")
   });
@@ -157,6 +159,7 @@ function strictRecord(value: unknown, keys: readonly string[], field: string): R
     }
   }
   for (const key of keys) {
+    if (key === "governedWorkflowProof") continue;
     if (!Object.hasOwn(value, key)) throw new RegistryValidationError(`${field}.${key} is required`);
   }
   return value;
@@ -203,6 +206,9 @@ function literal(value: unknown, expected: string, field: string): void {
 }
 function unique(values: readonly string[], field: string): void {
   if (new Set(values).size !== values.length) throw new RegistryValidationError(`${field} contains a duplicate value`);
+}
+function registryError(message: string): RegistryValidationError {
+  return new RegistryValidationError(message);
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;

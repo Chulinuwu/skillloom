@@ -1,4 +1,4 @@
-import { createBrainService } from "../brain/index.js";
+import { createBrainService, FileObsidianProjectionManager, type BrainDerivedProjectionPort } from "../brain/index.js";
 import { createBrainHttpRouter, createBrainHttpServer, listenBrainHttpServer } from "../http/index.js";
 import { createRegistryHttpRouter, createRegistryService } from "../registry/index.js";
 import { loadHubRuntimeConfig, type HubRuntimeConfig } from "./config.js";
@@ -15,10 +15,14 @@ export type HubRuntime = Readonly<{
   close(): Promise<void>;
 }>;
 
-export async function createHubRuntime(env: NodeJS.ProcessEnv = process.env): Promise<HubRuntime> {
+export async function createHubRuntime(env: NodeJS.ProcessEnv = process.env, dependencies: { projection?: BrainDerivedProjectionPort } = {}): Promise<HubRuntime> {
   const config = loadHubRuntimeConfig(env);
   const state = await loadHubRuntimeState(config.dataDir);
-  const brain = await createBrainService({ root: state.paths.brainRoot, permissions: createRuntimeBrainPermissions() });
+  const brain = await createBrainService({
+    root: state.paths.brainRoot,
+    permissions: createRuntimeBrainPermissions(),
+    projection: dependencies.projection ?? new FileObsidianProjectionManager(state.paths.brainRoot)
+  });
   const registry = await createRegistryService({
     root: state.paths.registryRoot,
     hubInstanceId: state.hubInstanceId,

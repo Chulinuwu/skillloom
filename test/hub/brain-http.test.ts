@@ -68,6 +68,16 @@ test("routes brain HTTP operations through the authorized principal", async () =
     const search = await router.handle(jsonRequest("POST", "/v1/brain/search", { query: "authoritative", limit: 5 }), auth);
     assert.equal(search.status, 200);
     assert.equal((search.body as { data: unknown[] }).data.length, 1);
+    const retrieve = await router.handle(jsonRequest("POST", "/v1/brain/retrieve", {
+      query: "authoritative",
+      tier: "standard",
+      filters: { types: ["decision"], statuses: ["accepted"], hasSource: false }
+    }), auth);
+    assert.equal(retrieve.status, 200);
+    assert.equal((retrieve.body as { data: { results: unknown[]; hotContext: unknown[] } }).data.results.length, 0);
+    const health = await router.handle(jsonRequest("GET", "/v1/brain/health"), auth);
+    assert.equal(health.status, 200);
+    assert.equal((health.body as { data: { status: string } }).data.status, "ok");
 
     const update = await router.handle(jsonRequest("PUT", `/v1/brain/${captured.data.artifact.id}`, {
       baseRevision: "1",
@@ -77,7 +87,7 @@ test("routes brain HTTP operations through the authorized principal", async () =
     assert.equal((update.body as { data: { artifact: { revision: string } } }).data.artifact.revision, "2");
 
     const second = await router.handle(jsonRequest("POST", "/v1/brain/captures", {
-      type: "source",
+      type: "fact",
       title: "Source",
       content: "Supporting material.",
       provenance: {},
@@ -90,6 +100,72 @@ test("routes brain HTTP operations through the authorized principal", async () =
     }, randomUUID()), auth);
     assert.equal(link.status, 201);
     assert.equal((link.body as { data: { link: { sourceArtifactId: string } } }).data.link.sourceArtifactId, captured.data.artifact.id);
+  } finally {
+    await brain.close();
+  }
+});
+
+test("routes brain retrieve with strict filters through POST", async () => {
+  const brain = await createBrainService({ root: await tempDir("skillloom-http-retrieve-"), permissions: new AllowingPermissions() });
+  const router = createBrainHttpRouter(brain);
+  const auth = authorization();
+  try {
+    const capture = await router.handle(jsonRequest("POST", "/v1/brain/captures", {
+      type: "fact",
+      title: "Canonical source",
+      content: "Authoritative retrieval source.",
+      provenance: { source: "http-retrieve-test" },
+      source: {
+        sourceId: "http-source-1",
+        capturedAt: "2026-07-21T00:00:00.000Z",
+        contentHash: `sha256:${"a".repeat(64)}`
+      },
+      details: { kind: "knowledge", status: "accepted" },
+      sensitivity: "tailnet"
+    }, randomUUID()), auth);
+    assert.equal(capture.status, 201);
+    const response = await router.handle(jsonRequest("POST", "/v1/brain/retrieve", {
+      query: "retrieval source",
+      tier: "standard",
+      limit: 3,
+      filters: { types: ["fact"], layers: ["human-knowledge"], sensitivities: ["tailnet"], statuses: ["accepted"], hasSource: true }
+    }), auth);
+    const data = response.body as { data: { tier: string; recoveredIndex: boolean; results: unknown[]; hotContext: unknown[] } };
+    assert.equal(response.status, 200);
+    assert.equal(data.data.tier, "standard");
+    assert.equal(data.data.recoveredIndex, false);
+    assert.equal(data.data.results.length, 1);
+    assert.equal(data.data.hotContext.length, 1);
+  } finally {
+    await brain.close();
+  }
+});
+
+test("rejects unknown brain retrieve filter fields over HTTP", async () => {
+  const brain = await createBrainService({ root: await tempDir("skillloom-http-retrieve-validation-"), permissions: new AllowingPermissions() });
+  const router = createBrainHttpRouter(brain);
+  try {
+    const response = await router.handle(jsonRequest("POST", "/v1/brain/retrieve", {
+      query: "x",
+      filters: { actorId: "user:attacker@example.com" }
+    }), authorization());
+    assert.equal(response.status, 400);
+    assert.equal(errorCode(response), "BRAIN_HTTP_VALIDATION_ERROR");
+  } finally {
+    await brain.close();
+  }
+});
+
+test("routes brain health with full index consistency fields", async () => {
+  const brain = await createBrainService({ root: await tempDir("skillloom-http-health-"), permissions: new AllowingPermissions() });
+  const router = createBrainHttpRouter(brain);
+  try {
+    const response = await router.handle(jsonRequest("GET", "/v1/brain/health"), authorization());
+    const data = response.body as { data: { status: string; contradictions: number; recoveredIndex: boolean } };
+    assert.equal(response.status, 200);
+    assert.equal(data.data.status, "ok");
+    assert.equal(data.data.contradictions, 0);
+    assert.equal(data.data.recoveredIndex, false);
   } finally {
     await brain.close();
   }

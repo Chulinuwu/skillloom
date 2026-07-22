@@ -23,3 +23,33 @@ test("human status output exposes the resolved automation profile", () => {
   assert.match(output, /^mode: manual$/mu);
   assert.match(output, /^automation: review=manual brain=manual retrieval=explicit promotion=manual hosts=claude:invoked,codex:invoked,agents:invoked$/mu);
 });
+
+test("setup output prints source-bound evidence and redacts secret snippets", () => {
+  const output = formatOutput({
+    command: "setup",
+    hub: { mode: "local-only" },
+    host: null,
+    surfaces: null,
+    targets: [],
+    reconciled: null,
+    plan: {
+      role: "client-node",
+      status: "needs-human",
+      environment: { tailscale: "needs-login", docker: "available" },
+      sources: [{
+        kind: "cli-help",
+        title: "tailscale serve --help",
+        fetchedAt: "2026-07-22T00:00:00.000Z",
+        contentHash: "sha256:test",
+        snippets: ["run TS_AUTHKEY=tskey-secret tailscale serve"]
+      }],
+      steps: [{ id: "trust-hub", title: "Trust Hub", action: "human", verification: "verified", sourceTitles: ["tailscale serve --help"] }],
+      checkpoints: ["environment-detected"],
+      warnings: []
+    }
+  }, false);
+  assert.match(output, /^role: client-node \(needs-human\)$/mu);
+  assert.match(output, /^evidence: tailscale serve --help: run TS_AUTHKEY=<redacted> tailscale serve$/mu);
+  assert.match(output, /^human: Trust Hub source=tailscale serve --help$/mu);
+  assert.doesNotMatch(output, /tskey-secret/u);
+});

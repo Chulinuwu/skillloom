@@ -1,9 +1,12 @@
+import type { WorkflowProofDecision } from "../policy/workflow-proof.js";
+
 export type JsonOutput = { json: boolean };
 export type ScopedTargetName = "claude" | "codex" | "agents";
 export type RuntimeTargetName = "claude" | "codex";
 export type TargetName = ScopedTargetName | "generic";
 export type Scope = "project" | "user";
 export type SetupHubMode = "auto" | "local";
+export type SetupRole = "main-hub" | "client-node" | "local-only";
 export type TargetScope = Scope | "explicit";
 export type SkillloomMode = "manual" | "policy" | "hermes";
 type PromoteCommandBase = {
@@ -36,7 +39,7 @@ type GenericDoctorCommand = {
 };
 export type Command =
   | ({ command: "init"; root: string } & JsonOutput)
-  | ({ command: "setup"; target: "auto" | ScopedTargetName; hub: SetupHubMode; hubUrl?: string; scope: Scope; yes: boolean } & JsonOutput)
+  | ({ command: "setup"; target: "auto" | ScopedTargetName; hub: SetupHubMode; hubUrl?: string; scope: Scope; yes: boolean; role?: SetupRole } & JsonOutput)
   | ({ command: "host"; action: "install" | "status"; yes: boolean } & JsonOutput)
   | ({ command: "sync"; apply: boolean } & JsonOutput)
   | ({ command: "bridge"; stdio: true } & JsonOutput)
@@ -47,7 +50,18 @@ export type Command =
   | ({ command: "rollback"; promotionId: string; yes: boolean; force: boolean } & JsonOutput)
   | ({ command: "status" } & JsonOutput)
   | ({ command: "mode"; mode?: SkillloomMode } & JsonOutput)
-  | ({ command: "observe"; source: "claude" | "codex" | "agents"; outcome: "no-op" | "memory" | "skill-create" | "skill-patch"; summary: string; candidateId?: string } & JsonOutput)
+  | ({
+      command: "observe";
+      source: "claude" | "codex" | "agents";
+      outcome: "no-op" | "memory" | "skill-create" | "skill-patch";
+      summary: string;
+      candidateId?: string;
+      taskId?: string;
+      taskOutcome?: "success" | "failure" | "cancelled" | "unknown";
+      evidence?: string[];
+      verifier?: string[];
+    } & JsonOutput)
+  | ({ command: "consolidate-learning" } & JsonOutput)
   | ({ command: "journey" } & JsonOutput)
   | ({ command: "recover-lock"; lock: "journal"; yes: boolean } & JsonOutput)
   | ((ScopedDoctorCommand | GenericDoctorCommand) & JsonOutput);
@@ -125,6 +139,7 @@ export type CandidateRecord = {
   evidence: string[];
   findings: TrustFinding[];
   base: CandidateBase;
+  governedWorkflowProof?: WorkflowProofDecision;
 };
 export type CandidateBase =
   | { kind: "none" }

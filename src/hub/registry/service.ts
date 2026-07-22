@@ -24,6 +24,7 @@ import { validateRegistryProposal, validateRegistryPublish } from "./server-vali
 import { parseChannelManifest, parseRegistryCandidate, parseRegistryRelease } from "./schema.js";
 import type { ChannelManifest, PackageBlobV1, RegistryRelease, SignedRegistryPayload } from "./types.js";
 import { signRegistryPayload } from "./release-signature.js";
+import { assertWorkflowProofDecision, authoritativeWorkflowProofError } from "../../policy/workflow-proof.js";
 
 export class RegistryService {
   private queue: Promise<unknown> = Promise.resolve();
@@ -56,7 +57,8 @@ export class RegistryService {
         claimedPackageHash: input.claimedPackageHash,
         baseReleaseHash: input.baseReleaseHash,
         capabilities: input.capabilities,
-        provenance: input.provenance
+        provenance: input.provenance,
+        ...(input.workflowProof === undefined ? {} : { workflowProof: input.workflowProof })
       });
       const replay = await this.replay(input.actor.actorId, input.requestId, payloadHash, "propose");
       if (replay) return replay.result;
@@ -65,6 +67,10 @@ export class RegistryService {
       const divergence = divergenceFor(input.baseReleaseHash, current?.payload.packageHash ?? null);
       const now = (this.dependencies.clock ?? (() => new Date()))().toISOString();
       const candidateId = deterministicRegistryId("candidate", input.actor.actorId, input.requestId);
+      assertWorkflowProofDecision(input.workflowProof, {
+        candidateId,
+        packageHash: validated.report.packageHash
+      }, input.provenance);
       const candidate = parseRegistryCandidate({
         schemaVersion: "skillloom-registry-candidate-v1",
         hubInstanceId: this.dependencies.hubInstanceId,
@@ -78,6 +84,7 @@ export class RegistryService {
         provenance: input.provenance,
         capabilities: validated.report.capabilities,
         validationDigest: validated.report.validationDigest,
+        ...(input.workflowProof === undefined ? {} : { governedWorkflowProof: input.workflowProof }),
         createdAt: now,
         createdBy: input.actor.actorId
       });
@@ -111,7 +118,8 @@ export class RegistryService {
         action: "publish",
         candidateId: input.candidateId,
         version: input.version,
-        channel: input.channel
+        channel: input.channel,
+        ...(input.workflowProof === undefined ? {} : { workflowProof: input.workflowProof })
       });
       const replay = await this.replay(input.actor.actorId, input.requestId, payloadHash, "publish");
       if (replay) return replay.result;
@@ -124,6 +132,13 @@ export class RegistryService {
       if (!await this.store.readBlob(record.candidate.payload.packageHash)) {
         throw new RegistryStorageCorruptionError(`Candidate ${input.candidateId} points to a missing blob`);
       }
+      const proofError = authoritativeWorkflowProofError(
+        record.candidate.payload.governedWorkflowProof,
+        input.workflowProof,
+        record.candidate.payload,
+        record.candidate.payload.provenance
+      );
+      if (proofError !== null) throw new RegistryPublishBlockedError(`${input.candidateId}: ${proofError}`);
       const now = (this.dependencies.clock ?? (() => new Date()))().toISOString();
       const sequence = await this.store.nextSequence();
       const release = parseRegistryRelease({

@@ -6,10 +6,13 @@ import {
 import type {
   BrainArtifact,
   BrainArtifactMutationResult,
+  BrainHealthReport,
   BrainLinkMutationResult,
+  BrainRetrievalResult,
   BrainSearchResult,
   CaptureBrainInput,
   LinkBrainInput,
+  RetrieveBrainInput,
   SearchBrainInput,
   UpdateBrainInput
 } from "../brain/index.js";
@@ -17,7 +20,9 @@ import {
   parseBrainArtifact,
   parseBrainArtifactMutation,
   parseBrainDataEnvelope,
+  parseBrainHealthReport,
   parseBrainLinkMutation,
+  parseBrainRetrievalResult,
   parseBrainSearchResults
 } from "./brain-response.js";
 import { executeDurableHubMutation } from "./durable-mutation.js";
@@ -25,6 +30,8 @@ import type { HubHttpClient } from "./transport-types.js";
 
 export type BrainApi = Readonly<{
   search(input: Omit<SearchBrainInput, "actor">): Promise<BrainSearchResult[]>;
+  retrieve(input: Omit<RetrieveBrainInput, "actor">): Promise<BrainRetrievalResult>;
+  health(): Promise<BrainHealthReport>;
   read(artifactId: string): Promise<BrainArtifact>;
   capture(requestId: string, input: Omit<CaptureBrainInput, "actor" | "requestId">): Promise<BrainArtifactMutationResult>;
   update(requestId: string, artifactId: string, input: Omit<UpdateBrainInput, "actor" | "requestId" | "artifactId">): Promise<BrainArtifactMutationResult>;
@@ -34,6 +41,12 @@ export type BrainApi = Readonly<{
 export function createBrainApi(root: string, client: HubHttpClient): BrainApi {
   return {
     search: async (input) => await query(client, "/v1/brain/search", input, parseBrainSearchResults),
+    retrieve: async (input) => await query(client, "/v1/brain/retrieve", input, parseBrainRetrievalResult),
+    health: async () => await client.request({
+      method: "GET",
+      path: "/v1/brain/health",
+      parse: (value) => parseBrainDataEnvelope(value, parseBrainHealthReport)
+    }),
     read: async (artifactId) => await client.request({
       method: "GET",
       path: `/v1/brain/${encodeURIComponent(artifactId)}`,

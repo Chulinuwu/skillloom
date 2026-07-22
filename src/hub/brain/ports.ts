@@ -13,6 +13,7 @@ import type {
   BrainPendingOperation,
   BrainSearchResult
 } from "./types.js";
+import type { BrainIndexHealthSnapshot } from "./retrieval-types.js";
 
 export interface BrainPermissionPort {
   requireRead(actor: BrainActor): Promise<void>;
@@ -53,8 +54,14 @@ export interface BrainMetadataIndex {
   rebuild(artifacts: BrainArtifact[], events: BrainAuditEvent[]): Promise<void>;
   search(query: string, type: BrainArtifactType | undefined, limit: number): Promise<BrainSearchResult[]>;
   links(artifactId: string): Promise<BrainLink[]>;
+  healthSnapshot(): Promise<BrainIndexHealthSnapshot>;
 }
 
+export interface BrainDerivedProjectionPort {
+  initialize(artifacts: readonly BrainArtifact[]): Promise<void>;
+  markDirty(): Promise<void>;
+  refresh(artifacts: readonly BrainArtifact[]): Promise<void>;
+}
 export type BrainFaultInjector = (point: BrainFaultPoint, operation: BrainPendingOperation) => void | Promise<void>;
 
 export type BrainServiceDependencies = {
@@ -64,6 +71,7 @@ export type BrainServiceDependencies = {
   audit?: BrainAuditPort;
   journal?: BrainOperationJournalPort;
   index?: BrainMetadataIndex;
+  projection?: BrainDerivedProjectionPort;
   clock?: () => Date;
   faultInjector?: BrainFaultInjector;
 };

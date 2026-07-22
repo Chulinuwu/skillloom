@@ -11,6 +11,8 @@ import type {
 
 const brainToolNames = new Set<BridgeBrainToolName>([
   "brain_search",
+  "brain_retrieve",
+  "brain_health",
   "brain_read",
   "brain_capture",
   "brain_update",

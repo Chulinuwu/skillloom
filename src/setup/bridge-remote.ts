@@ -2,8 +2,10 @@ import type { BridgeRemoteBrainCall, BridgeRemoteSkillCall, BridgeRemoteToolCall
 import type { BrainApi, RegistryMutationApi, RegistryReadApi } from "../hub/client/index.js";
 import {
   parseBrainMcpCapture,
+  parseBrainMcpHealth,
   parseBrainMcpLink,
   parseBrainMcpRead,
+  parseBrainMcpRetrieve,
   parseBrainMcpSearch,
   parseBrainMcpUpdate,
   parseRegistryMcpPropose,
@@ -58,6 +60,11 @@ export class LazyHubApiBridgeAdapter implements BridgeRemoteToolPort {
 
 async function dispatchBrain(api: BrainApi, call: BridgeRemoteBrainCall): Promise<unknown> {
   if (call.name === "brain_search") return await api.search(parseBrainMcpSearch(call.arguments));
+  if (call.name === "brain_retrieve") return await api.retrieve(parseBrainMcpRetrieve(call.arguments));
+  if (call.name === "brain_health") {
+    parseBrainMcpHealth(call.arguments);
+    return await api.health();
+  }
   if (call.name === "brain_read") return await api.read(parseBrainMcpRead(call.arguments).artifactId);
   if (call.name === "brain_capture") {
     const { requestId, ...input } = parseBrainMcpCapture(call.arguments);
@@ -84,7 +91,7 @@ async function dispatchRegistry(api: RegistryMutationApi & RegistryReadApi, call
     return await api.propose(requestId, input);
   }
   const input = parseRegistryMcpPublish(call.arguments);
-  return await api.publish(input.requestId, input.candidateId, input.version);
+  return await api.publish(input.requestId, input.candidateId, input.version, input.workflowProof);
 }
 
 function toolResult(value: unknown) {

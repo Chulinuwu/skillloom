@@ -1,11 +1,95 @@
+import { brainArtifactLayers, brainArtifactTypes } from "../brain/vocabulary.js";
 import type { BrainMcpToolDefinition } from "./types.js";
 
 const artifactId = { type: "string", pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" };
 const requestId = { ...artifactId };
-const artifactType = { type: "string", enum: ["note", "fact", "decision", "source", "project", "memory"] };
+const artifactType = { type: "string", enum: brainArtifactTypes };
+const artifactLayer = { type: "string", enum: brainArtifactLayers };
 const sensitivity = { type: "string", enum: ["private", "tailnet", "restricted"] };
 const jsonObject = { type: "object" };
+const sourceMetadata = {
+  type: "object",
+  properties: {
+    sourceId: { type: "string", minLength: 1 },
+    capturedAt: { type: "string" },
+    contentHash: { type: "string", pattern: "^sha256:[0-9a-f]{64}$" },
+    uri: { type: "string", minLength: 1 },
+    title: { type: "string", minLength: 1 },
+    mediaType: { type: "string", minLength: 1 },
+    fetchedAt: { type: "string" },
+    retrievedBy: { type: "string", minLength: 1 }
+  },
+  required: ["sourceId", "capturedAt", "contentHash"],
+  additionalProperties: false
+};
+const artifactDetails = {
+  anyOf: [
+    { type: "object", properties: { kind: { type: "string", enum: ["none"] } }, required: ["kind"], additionalProperties: false },
+    {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["knowledge"] },
+        status: { type: "string", enum: ["draft", "accepted", "disputed", "superseded"] },
+        confidence: { type: "number", minimum: 0, maximum: 1 },
+        entities: { type: "array", items: { type: "string" } },
+        concepts: { type: "array", items: { type: "string" } }
+      },
+      required: ["kind", "status"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["episode"] },
+        taskId: { type: "string", minLength: 1 },
+        hostId: { type: "string", minLength: 1 },
+        startedAt: { type: "string" },
+        endedAt: { type: "string" },
+        outcome: { type: "string", enum: ["success", "failure", "partial", "cancelled"] }
+      },
+      required: ["kind", "taskId", "hostId", "startedAt", "outcome"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["workflow"] },
+        trigger: { type: "string", minLength: 1 },
+        steps: { type: "array", items: { type: "string" } },
+        verifier: { type: "string", minLength: 1 },
+        promotable: { type: "boolean" }
+      },
+      required: ["kind", "trigger", "steps", "promotable"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["feedback"] },
+        targetArtifactId: { type: "string", minLength: 1 },
+        signal: { type: "string", enum: ["positive", "negative", "correction"] },
+        reason: { type: "string", minLength: 1 }
+      },
+      required: ["kind", "targetArtifactId", "signal", "reason"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["rejected-update"] },
+        targetArtifactId: { type: "string", minLength: 1 },
+        rejectedAt: { type: "string" },
+        reason: { type: "string", minLength: 1 },
+        retryable: { type: "boolean" }
+      },
+      required: ["kind", "targetArtifactId", "rejectedAt", "reason", "retryable"],
+      additionalProperties: false
+    }
+  ]
+};
 const packageHash = { type: ["string", "null"], pattern: "^sha256-v2:[0-9a-f]{64}$" };
+const packageHashString = { type: "string", pattern: "^sha256-v2:[0-9a-f]{64}$" };
+const sha256Digest = { type: "string", pattern: "^sha256:[0-9a-f]{64}$" };
 const capability = { type: "string", enum: ["filesystem-read", "filesystem-write", "network", "shell", "secrets"] };
 const provenanceReference = {
   type: "object",
@@ -27,6 +111,48 @@ const packageFile = {
   required: ["relativePath", "mode", "content"],
   additionalProperties: false
 };
+const workflowProof = {
+  type: "object",
+  properties: {
+    schemaVersion: { type: "string", enum: ["skillloom-workflow-proof-v1"] },
+    decisionId: { type: "string", minLength: 1 },
+    idempotencyKey: { type: "string", minLength: 1 },
+    verdict: { type: "string", enum: ["passed", "failed"] },
+    workflow: {
+      type: "object",
+      properties: {
+        artifactId: { type: "string", minLength: 1 },
+        revision: { type: "string", pattern: "^(0|[1-9][0-9]*)$" },
+        contentHash: sha256Digest
+      },
+      required: ["artifactId", "revision", "contentHash"],
+      additionalProperties: false
+    },
+    candidate: {
+      type: "object",
+      properties: {
+        candidateId: { type: "string", minLength: 1 },
+        packageHash: packageHashString
+      },
+      required: ["candidateId", "packageHash"],
+      additionalProperties: false
+    },
+    verifier: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["replay", "held-out-evaluation"] },
+        summary: { type: "string", minLength: 1 },
+        evidence: { type: "string", minLength: 1 }
+      },
+      required: ["kind", "summary", "evidence"],
+      additionalProperties: false
+    },
+    provenanceHashes: { type: "array", items: sha256Digest },
+    decidedAt: { type: "string" }
+  },
+  required: ["schemaVersion", "decisionId", "idempotencyKey", "verdict", "workflow", "candidate", "verifier", "provenanceHashes", "decidedAt"],
+  additionalProperties: false
+};
 
 const definitions: readonly BrainMcpToolDefinition[] = [
   {
@@ -38,6 +164,38 @@ const definitions: readonly BrainMcpToolDefinition[] = [
       required: ["query"],
       additionalProperties: false
     }
+  },
+  {
+    name: "brain_retrieve",
+    description: "Retrieve bounded hot context with explainable quick, standard, or deep ranking.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", minLength: 1, maxLength: 500 },
+        tier: { type: "string", enum: ["quick", "standard", "deep"] },
+        limit: { type: "integer", minimum: 1, maximum: 40 },
+        filters: {
+          type: "object",
+          properties: {
+            types: { type: "array", items: artifactType, uniqueItems: true },
+            layers: { type: "array", items: artifactLayer, uniqueItems: true },
+            sensitivities: { type: "array", items: sensitivity, uniqueItems: true },
+            statuses: { type: "array", items: { type: "string", enum: ["draft", "accepted", "disputed", "superseded"] }, uniqueItems: true },
+            updatedAfter: { type: "string" },
+            updatedBefore: { type: "string" },
+            hasSource: { type: "boolean" }
+          },
+          additionalProperties: false
+        }
+      },
+      required: ["query"],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "brain_health",
+    description: "Lint read-only Brain store, audit log, and derived index consistency.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false }
   },
   {
     name: "brain_read",
@@ -56,6 +214,9 @@ const definitions: readonly BrainMcpToolDefinition[] = [
         content: { type: "string", maxLength: 2_000_000 },
         frontmatter: jsonObject,
         provenance: jsonObject,
+        layer: artifactLayer,
+        source: sourceMetadata,
+        details: artifactDetails,
         sensitivity
       },
       required: ["requestId", "type", "title", "content", "provenance", "sensitivity"],
@@ -76,6 +237,8 @@ const definitions: readonly BrainMcpToolDefinition[] = [
         content: { type: "string", maxLength: 2_000_000 },
         frontmatter: jsonObject,
         provenance: jsonObject,
+        layer: artifactLayer,
+        details: artifactDetails,
         sensitivity
       },
       required: ["requestId", "artifactId", "baseRevision"],
@@ -127,7 +290,8 @@ const definitions: readonly BrainMcpToolDefinition[] = [
         baseReleaseHash: packageHash,
         capabilities: { type: "array", items: capability, uniqueItems: true, maxItems: 5 },
         provenance: { type: "array", items: provenanceReference, maxItems: 16 },
-        files: { type: "array", items: packageFile, minItems: 1, maxItems: 256 }
+        files: { type: "array", items: packageFile, minItems: 1, maxItems: 256 },
+        workflowProof
       },
       required: ["requestId", "name", "baseReleaseHash", "capabilities", "provenance", "files"],
       additionalProperties: false
@@ -142,7 +306,8 @@ const definitions: readonly BrainMcpToolDefinition[] = [
         requestId,
         candidateId: { type: "string", minLength: 1, maxLength: 200 },
         version: { type: "string", pattern: "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$" },
-        channel: { type: "string", enum: ["stable"] }
+        channel: { type: "string", enum: ["stable"] },
+        workflowProof
       },
       required: ["requestId", "candidateId", "version", "channel"],
       additionalProperties: false

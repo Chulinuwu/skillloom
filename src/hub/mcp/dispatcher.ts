@@ -5,6 +5,8 @@ import {
   parseBrainMcpCapture,
   parseBrainMcpLink,
   parseBrainMcpRead,
+  parseBrainMcpRetrieve,
+  parseBrainMcpHealth,
   parseBrainMcpSearch,
   parseBrainMcpUpdate
 } from "./schema.js";
@@ -25,6 +27,15 @@ async function dispatchBrainMcpCall(brain: BrainService, call: BrainMcpCall, aut
   if (call.name === "brain_search") {
     requirePermission(authorization, "brain:read");
     return { results: await brain.search({ actor, ...parseBrainMcpSearch(call.arguments) }) };
+  }
+  if (call.name === "brain_retrieve") {
+    requirePermission(authorization, "brain:read");
+    return await brain.retrieve({ actor, ...parseBrainMcpRetrieve(call.arguments) });
+  }
+  if (call.name === "brain_health") {
+    requirePermission(authorization, "brain:read");
+    parseBrainMcpHealth(call.arguments);
+    return await brain.health({ actor });
   }
   if (call.name === "brain_read") {
     requirePermission(authorization, "brain:read");

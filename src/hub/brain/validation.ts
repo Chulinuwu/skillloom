@@ -2,6 +2,8 @@ import { BrainStorageCorruptionError, BrainValidationError } from "./errors.js";
 import type {
   BrainActor,
   BrainArtifact,
+  BrainArtifactDetails,
+  BrainArtifactLayer,
   BrainArtifactMetadata,
   BrainArtifactType,
   BrainAuditEvent,
@@ -11,12 +13,23 @@ import type {
   BrainPendingOperation,
   BrainSensitivity
 } from "./types.js";
+import {
+  parseBrainArtifactDetails,
+  parseBrainArtifactLayer,
+  parseBrainSourceMetadata,
+  validateBrainArtifactConsistency
+} from "./artifact-details.js";
+import { brainArtifactLayers, brainArtifactTypes, brainRelationshipTypes, defaultBrainLayer } from "./vocabulary.js";
 
-const artifactTypes: ReadonlySet<string> = new Set(["note", "fact", "decision", "source", "project", "memory"]);
+const artifactTypes: ReadonlySet<string> = new Set(brainArtifactTypes);
+const artifactLayers: ReadonlySet<string> = new Set(brainArtifactLayers);
+const relationshipTypes: ReadonlySet<string> = new Set(brainRelationshipTypes);
 const sensitivities: ReadonlySet<string> = new Set(["private", "tailnet", "restricted"]);
 const decimalPattern = /^(0|[1-9]\d*)$/;
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,199}$/;
+const relationshipPattern = /^[a-z][a-z0-9-]{0,63}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const noneDetails: BrainArtifactDetails = { kind: "none" };
 
 export function validateActor(actor: BrainActor): void {
   validateIdentifier(actor.actorId, "actorId");
@@ -51,7 +64,7 @@ export function validateContent(content: string): void {
 }
 
 export function validateRelationship(relationship: string): void {
-  if (!/^[a-z][a-z0-9-]{0,63}$/.test(relationship)) {
+  if (!relationshipTypes.has(relationship) && !relationshipPattern.test(relationship)) {
     throw new BrainValidationError("relationship must be a lowercase typed relationship");
   }
 }
@@ -68,6 +81,10 @@ export function isBrainArtifactType(value: unknown): value is BrainArtifactType 
 
 export function isBrainSensitivity(value: unknown): value is BrainSensitivity {
   return typeof value === "string" && sensitivities.has(value);
+}
+
+export function isBrainArtifactLayer(value: unknown): value is BrainArtifactLayer {
+  return typeof value === "string" && artifactLayers.has(value);
 }
 
 export function validateBrainJsonRecord(value: unknown, field: string): asserts value is Record<string, BrainJsonValue> {
@@ -94,9 +111,14 @@ export function parseBrainArtifact(value: unknown): BrainArtifact {
     || typeof value.updatedBy !== "string") {
     throw new BrainStorageCorruptionError("Brain artifact metadata is malformed");
   }
+  const type = value.type;
+  const layer = value.layer === undefined ? defaultBrainLayer(type) : parseBrainArtifactLayer(value.layer);
+  const details = value.details === undefined ? noneDetails : parseBrainArtifactDetails(value.details);
+  validateBrainArtifactConsistency(type, layer, details);
   return {
     id: value.id,
-    type: value.type,
+    type,
+    layer,
     path: value.path,
     revision: value.revision,
     contentHash: value.contentHash,
@@ -104,6 +126,8 @@ export function parseBrainArtifact(value: unknown): BrainArtifact {
     content: value.content,
     frontmatter: value.frontmatter,
     provenance: value.provenance,
+    ...(value.source === undefined ? {} : { source: parseBrainSourceMetadata(value.source) }),
+    details,
     sensitivity: value.sensitivity,
     createdAt: value.createdAt,
     createdBy: value.createdBy,
@@ -217,12 +241,15 @@ export function withoutContent(artifact: BrainArtifact): BrainArtifactMetadata {
   return {
     id: artifact.id,
     type: artifact.type,
+    layer: artifact.layer,
     path: artifact.path,
     revision: artifact.revision,
     contentHash: artifact.contentHash,
     title: artifact.title,
     frontmatter: artifact.frontmatter,
     provenance: artifact.provenance,
+    ...(artifact.source === undefined ? {} : { source: artifact.source }),
+    details: artifact.details,
     sensitivity: artifact.sensitivity,
     createdAt: artifact.createdAt,
     createdBy: artifact.createdBy,
@@ -241,6 +268,7 @@ function parseBrainLink(value: unknown): BrainLink {
     || typeof value.createdBy !== "string") {
     throw new BrainStorageCorruptionError("Brain link is malformed");
   }
+  validateRelationship(value.relationship);
   return {
     id: value.id,
     sourceArtifactId: value.sourceArtifactId,
@@ -285,12 +313,14 @@ function draftResult(value: Record<string, unknown>): BrainMutationResult {
     artifact: {
       id: "00000000-0000-0000-0000-000000000000",
       type: "note",
+      layer: "human-knowledge",
       path: "vault/inbox/00000000-0000-0000-0000-000000000000.md",
       revision: "1",
       contentHash: "sha256:0",
       title: "pending",
       frontmatter: {},
       provenance: {},
+      details: { kind: "none" },
       sensitivity: "private",
       createdAt: new Date(0).toISOString(),
       createdBy: "system",

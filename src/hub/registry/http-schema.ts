@@ -1,6 +1,7 @@
 import { MAX_TOTAL_BYTES } from "../../config/defaults.js";
 import { isJsonRecord, isRecord, unknownKeys } from "../adapter-schema.js";
 import type { SkillCapability } from "../../domain/types.js";
+import { parseWorkflowProofDecision } from "../../policy/workflow-proof-schema.js";
 import { RegistryValidationError } from "./errors.js";
 import { createPackageBlob, hashPackageBlob } from "./package-blob.js";
 import { isCanonicalRegistrySequence } from "./schema.js";
@@ -33,7 +34,7 @@ export function parseRegistryReadPath(url: string): RegistryReadRequest {
   throw new RegistryValidationError("Registry route was not found");
 }
 export async function parseRegistryProposeBody(request: RegistryHttpBodyRequest, actor: RegistryActor): Promise<ProposeRegistryInput> {
-  const input = strictBody(request, ["name", "baseReleaseHash", "capabilities", "provenance", "files"]);
+  const input = strictBody(request, ["name", "baseReleaseHash", "capabilities", "provenance", "files", "workflowProof"]);
   const files = array(input.files, "files").map((file, index) => parsePackageFile(file, index));
   const packageBlob = createPackageBlob(files);
   return {
@@ -44,18 +45,20 @@ export async function parseRegistryProposeBody(request: RegistryHttpBodyRequest,
     claimedPackageHash: await hashPackageBlob(packageBlob),
     baseReleaseHash: nullablePackageHash(input.baseReleaseHash, "baseReleaseHash"),
     capabilities: parseCapabilities(input.capabilities),
-    provenance: parseProvenance(input.provenance)
+    provenance: parseProvenance(input.provenance),
+    ...(input.workflowProof === undefined ? {} : { workflowProof: parseWorkflowProofDecision(input.workflowProof, registryError) })
   };
 }
 export function parseRegistryPublishBody(request: RegistryHttpBodyRequest, actor: RegistryActor): PublishRegistryInput {
-  const input = strictBody(request, ["candidateId", "version", "channel"]);
+  const input = strictBody(request, ["candidateId", "version", "channel", "workflowProof"]);
   if (input.channel !== "stable") throw new RegistryValidationError("channel must equal stable");
   return {
     actor,
     requestId: parseIdempotencyKey(request),
     candidateId: identifierField(input.candidateId, "candidateId"),
     version: semanticVersion(input.version),
-    channel: "stable"
+    channel: "stable",
+    ...(input.workflowProof === undefined ? {} : { workflowProof: parseWorkflowProofDecision(input.workflowProof, registryError) })
   };
 }
 export function parseRegistryIdempotencyKey(request: RegistryHttpBodyRequest): string {
@@ -180,4 +183,7 @@ function semanticVersion(value: unknown): string {
     throw new RegistryValidationError("version must be a canonical semantic version");
   }
   return value;
+}
+function registryError(message: string): RegistryValidationError {
+  return new RegistryValidationError(message);
 }

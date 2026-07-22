@@ -1,4 +1,5 @@
 import type { SkillCapability } from "../../domain/types.js";
+import type { WorkflowProofDecision } from "../../policy/workflow-proof.js";
 export type RegistryJsonValue = null | boolean | number | string | RegistryJsonValue[] | { [key: string]: RegistryJsonValue };
 export type PackageBlobFileV1 = Readonly<{
   relativePath: string;
@@ -33,6 +34,7 @@ export type RegistryCandidate = Readonly<{
   provenance: readonly RegistryProvenanceReference[];
   capabilities: readonly SkillCapability[];
   validationDigest: string;
+  governedWorkflowProof?: WorkflowProofDecision;
   createdAt: string;
   createdBy: string;
 }>;

@@ -1,4 +1,5 @@
 import type { SkillCapability, SkillMetadata, TrustFinding } from "../../domain/types.js";
+import type { WorkflowProofDecision } from "../../policy/workflow-proof.js";
 import type { Ed25519RegistrySigner } from "./release-signature.js";
 import type {
   ChannelManifest,
@@ -48,6 +49,7 @@ export type ProposeRegistryInput = Readonly<{
   baseReleaseHash: string | null;
   capabilities: readonly SkillCapability[];
   provenance: readonly RegistryProvenanceReference[];
+  workflowProof?: WorkflowProofDecision;
 }>;
 
 export type PublishRegistryInput = Readonly<{
@@ -56,6 +58,7 @@ export type PublishRegistryInput = Readonly<{
   candidateId: string;
   version: string;
   channel: "stable";
+  workflowProof?: WorkflowProofDecision;
 }>;
 
 export interface RegistryPermissionPort {

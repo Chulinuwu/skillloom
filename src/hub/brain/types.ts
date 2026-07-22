@@ -1,6 +1,27 @@
 export type BrainJsonValue = null | boolean | number | string | BrainJsonValue[] | { [key: string]: BrainJsonValue };
 
-export type BrainArtifactType = "note" | "fact" | "decision" | "source" | "project" | "memory";
+export type BrainArtifactType =
+  | "note"
+  | "fact"
+  | "decision"
+  | "source"
+  | "source-observation"
+  | "project"
+  | "memory"
+  | "claim"
+  | "entity"
+  | "concept"
+  | "bounded-episode"
+  | "workflow"
+  | "feedback"
+  | "rejected-update"
+  | "skill-candidate"
+  | "skill-release"
+  | "hot-context"
+  | "index-chunk"
+  | "health-report";
+
+export type BrainArtifactLayer = "evidence" | "human-knowledge" | "agent-knowledge" | "workflow" | "skill" | "derived";
 
 export type BrainSensitivity = "private" | "tailnet" | "restricted";
 
@@ -8,9 +29,73 @@ export type BrainActor = {
   actorId: string;
 };
 
+export type BrainSourceMetadata = {
+  sourceId: string;
+  capturedAt: string;
+  contentHash: string;
+  uri?: string;
+  title?: string;
+  mediaType?: string;
+  fetchedAt?: string;
+  retrievedBy?: string;
+};
+
+export type BrainNoneDetails = {
+  kind: "none";
+};
+
+export type BrainKnowledgeDetails = {
+  kind: "knowledge";
+  status: "draft" | "accepted" | "disputed" | "superseded";
+  confidence?: number;
+  entities?: readonly string[];
+  concepts?: readonly string[];
+};
+
+export type BrainEpisodeDetails = {
+  kind: "episode";
+  taskId: string;
+  hostId: string;
+  startedAt: string;
+  endedAt?: string;
+  outcome: "success" | "failure" | "partial" | "cancelled";
+};
+
+export type BrainWorkflowDetails = {
+  kind: "workflow";
+  trigger: string;
+  steps: readonly string[];
+  verifier?: string;
+  promotable: boolean;
+};
+
+export type BrainFeedbackDetails = {
+  kind: "feedback";
+  targetArtifactId: string;
+  signal: "positive" | "negative" | "correction";
+  reason: string;
+};
+
+export type BrainRejectedUpdateDetails = {
+  kind: "rejected-update";
+  targetArtifactId: string;
+  rejectedAt: string;
+  reason: string;
+  retryable: boolean;
+};
+
+export type BrainArtifactDetails =
+  | BrainNoneDetails
+  | BrainKnowledgeDetails
+  | BrainEpisodeDetails
+  | BrainWorkflowDetails
+  | BrainFeedbackDetails
+  | BrainRejectedUpdateDetails;
+
 export type BrainArtifact = {
   id: string;
   type: BrainArtifactType;
+  layer: BrainArtifactLayer;
   path: string;
   revision: string;
   contentHash: string;
@@ -18,6 +103,8 @@ export type BrainArtifact = {
   content: string;
   frontmatter: Record<string, BrainJsonValue>;
   provenance: Record<string, BrainJsonValue>;
+  source?: BrainSourceMetadata;
+  details: BrainArtifactDetails;
   sensitivity: BrainSensitivity;
   createdAt: string;
   createdBy: string;
@@ -119,8 +206,11 @@ export type CaptureBrainInput = {
   type: BrainArtifactType;
   title: string;
   content: string;
+  layer?: BrainArtifactLayer;
   frontmatter?: Record<string, BrainJsonValue>;
   provenance: Record<string, BrainJsonValue>;
+  source?: BrainSourceMetadata;
+  details?: BrainArtifactDetails;
   sensitivity: BrainSensitivity;
 };
 
@@ -130,10 +220,12 @@ export type UpdateBrainInput = {
   artifactId: string;
   baseRevision: string;
   type?: BrainArtifactType;
+  layer?: BrainArtifactLayer;
   title?: string;
   content?: string;
   frontmatter?: Record<string, BrainJsonValue>;
   provenance?: Record<string, BrainJsonValue>;
+  details?: BrainArtifactDetails;
   sensitivity?: BrainSensitivity;
 };
 
@@ -150,4 +242,53 @@ export type SearchBrainInput = {
   query: string;
   type?: BrainArtifactType;
   limit?: number;
+};
+export type ListBrainInput = {
+  actor: BrainActor;
+  type?: BrainArtifactType;
+};
+export type SourceExtractionInput = {
+  type: "claim" | "fact" | "entity" | "concept" | "decision" | "project";
+  title: string;
+  content: string;
+  requestId: string;
+  confidence?: number;
+  entities?: readonly string[];
+  concepts?: readonly string[];
+  contradicts?: readonly string[];
+  fillsGaps?: readonly string[];
+};
+export type SourceGapInput = {
+  requestId: string;
+  title: string;
+  question: string;
+};
+export type IngestSourceInput = {
+  actor: BrainActor;
+  requestId: string;
+  title: string;
+  content: string;
+  capturedAt: string;
+  uri?: string;
+  mediaType?: string;
+  fetchedAt?: string;
+  retrievedBy?: string;
+  sensitivity: BrainSensitivity;
+  frontmatter?: Record<string, BrainJsonValue>;
+  provenance: Record<string, BrainJsonValue>;
+  extractions?: readonly SourceExtractionInput[];
+  gaps?: readonly SourceGapInput[];
+};
+export type IngestSourceResult = {
+  source: BrainArtifactMutationResult;
+  extracted: BrainArtifactMutationResult[];
+  links: BrainLinkMutationResult[];
+  gaps: BrainArtifactMutationResult[];
+};
+export type HumanInboxImportResult = {
+  path: string;
+  contentHash: string;
+  imported: boolean;
+  artifact?: BrainArtifactMutationResult;
+  conflict?: BrainArtifactMutationResult;
 };

@@ -15,6 +15,7 @@ import type {
   BrainPendingOperation,
   BrainSearchResult
 } from "./types.js";
+import type { BrainIndexHealthSnapshot } from "./retrieval-types.js";
 import { parseBrainArtifactMetadata, parseBrainMutationResult, withoutContent } from "./validation.js";
 
 export class SqliteBrainMetadataIndex implements BrainMetadataIndex {
@@ -112,6 +113,17 @@ export class SqliteBrainMetadataIndex implements BrainMetadataIndex {
       ORDER BY id ASC
     `).all(artifactId, artifactId).map((row) => parseLink(JSON.parse(textColumn(rowRecord(row), "link_json"))));
   }
+  async healthSnapshot(): Promise<BrainIndexHealthSnapshot> {
+    return {
+      artifactIds: this.statement("SELECT id FROM artifacts ORDER BY id ASC").all().map((row) => textColumn(rowRecord(row), "id")),
+      linkIds: this.statement("SELECT id FROM links ORDER BY id ASC").all().map((row) => textColumn(rowRecord(row), "id")),
+      eventSequences: this.statement("SELECT sequence FROM audit_events ORDER BY sequence ASC").all().map((row) => textColumn(rowRecord(row), "sequence")),
+      idempotencyKeys: this.statement("SELECT actor_id, request_id FROM idempotency ORDER BY actor_id ASC, request_id ASC").all().map((row) => {
+        const record = rowRecord(row);
+        return `${textColumn(record, "actor_id")}\u0000${textColumn(record, "request_id")}`;
+      })
+    };
+  }
 
   private upsertArtifact(artifact: BrainArtifact): void {
     const metadata = withoutContent(artifact);
@@ -146,7 +158,12 @@ export class SqliteBrainMetadataIndex implements BrainMetadataIndex {
       artifact.updatedAt
     );
     this.statement("INSERT INTO artifact_fts (artifact_id, title, content, type, provenance) VALUES (?, ?, ?, ?, ?)")
-      .run(artifact.id, artifact.title, artifact.content, artifact.type, JSON.stringify(artifact.provenance));
+      .run(artifact.id, artifact.title, artifact.content, artifact.type, JSON.stringify({
+        layer: artifact.layer,
+        provenance: artifact.provenance,
+        source: artifact.source ?? null,
+        details: artifact.details
+      }));
   }
 
   private upsertLink(link: BrainLink): void {

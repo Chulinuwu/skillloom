@@ -5,6 +5,7 @@ import {
   parseCaptureBody,
   parseIdempotencyKey,
   parseLinkBody,
+  parseRetrieveBody,
   parseSearchBody,
   parseUpdateBody,
   validateArtifactPathId
@@ -32,6 +33,14 @@ async function routeBrainRequest(brain: BrainService, request: BrainHttpRequest,
   if (request.method === "POST" && pathname === "/v1/brain/search") {
     requirePermission(authorization, "brain:read");
     return success(200, await brain.search({ actor: actor(authorization), ...parseSearchBody(request) }));
+  }
+  if (request.method === "POST" && pathname === "/v1/brain/retrieve") {
+    requirePermission(authorization, "brain:read");
+    return success(200, await brain.retrieve({ actor: actor(authorization), ...parseRetrieveBody(request) }));
+  }
+  if (request.method === "GET" && pathname === "/v1/brain/health") {
+    requirePermission(authorization, "brain:read");
+    return success(200, await brain.health({ actor: actor(authorization) }));
   }
   if (request.method === "POST" && pathname === "/v1/brain/captures") {
     requirePermission(authorization, "brain:capture");
@@ -87,7 +96,8 @@ function parsePathname(url: string): string {
 }
 
 function knownPath(pathname: string): boolean {
-  return pathname === "/healthz" || pathname === "/v1/brain/search" || pathname === "/v1/brain/captures"
+  return pathname === "/healthz" || pathname === "/v1/brain/search" || pathname === "/v1/brain/retrieve"
+    || pathname === "/v1/brain/health" || pathname === "/v1/brain/captures"
     || artifactRoute.test(pathname) || linkRoute.test(pathname);
 }
 

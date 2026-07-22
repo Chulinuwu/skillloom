@@ -15,6 +15,7 @@ import { rollbackCommand } from "../commands/rollback.js";
 import { recoverLockCommand } from "../commands/recover-lock.js";
 import { modeCommand } from "../commands/mode.js";
 import { observeCommand } from "../commands/observe.js";
+import { consolidateLearningCommand } from "../commands/consolidate-learning.js";
 import { journeyCommand } from "../commands/journey.js";
 import { bridgeCommand } from "../commands/bridge.js";
 import { setupCommand } from "../commands/setup.js";
@@ -80,6 +81,9 @@ async function run(command: ReturnType<typeof parseArguments>) {
   }
   if (command.command === "observe") {
     return await observeCommand(command);
+  }
+  if (command.command === "consolidate-learning") {
+    return await consolidateLearningCommand(command);
   }
   if (command.command === "journey") {
     return await journeyCommand(command);

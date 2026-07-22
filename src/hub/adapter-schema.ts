@@ -1,7 +1,9 @@
-import type { BrainArtifactType, BrainJsonValue, BrainSensitivity } from "./brain/index.js";
+import type { BrainArtifactLayer, BrainArtifactType, BrainJsonValue, BrainSensitivity } from "./brain/index.js";
+import { brainArtifactLayers, brainArtifactTypes } from "./brain/vocabulary.js";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const artifactTypes: ReadonlySet<string> = new Set(["note", "fact", "decision", "source", "project", "memory"]);
+const artifactTypes: ReadonlySet<string> = new Set(brainArtifactTypes);
+const artifactLayers: ReadonlySet<string> = new Set(brainArtifactLayers);
 const sensitivities: ReadonlySet<string> = new Set(["private", "tailnet", "restricted"]);
 
 export function isCanonicalUuid(value: unknown): value is string {
@@ -10,6 +12,10 @@ export function isCanonicalUuid(value: unknown): value is string {
 
 export function isBrainArtifactType(value: unknown): value is BrainArtifactType {
   return typeof value === "string" && artifactTypes.has(value);
+}
+
+export function isBrainArtifactLayer(value: unknown): value is BrainArtifactLayer {
+  return typeof value === "string" && artifactLayers.has(value);
 }
 
 export function isBrainSensitivity(value: unknown): value is BrainSensitivity {

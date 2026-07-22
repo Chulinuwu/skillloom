@@ -1,10 +1,11 @@
 import type { AdapterContext, Scope, TargetScope } from "../domain/types.js";
 import type { GenericDirectoryAdapter, ScopedHarnessAdapter } from "../adapters/types.js";
 import type { PromotionOperation } from "../operations/types.js";
+import type { WorkflowProofDecision } from "../policy/workflow-proof.js";
 
 export type PromotionApproval =
-  | { kind?: "explicit"; yes: boolean; acceptWarnings: boolean }
-  | { kind: "policy" };
+  | { kind?: "explicit"; yes: boolean; acceptWarnings: boolean; workflowProof?: WorkflowProofDecision }
+  | { kind: "policy"; workflowProof?: WorkflowProofDecision };
 
 export type PromotionContext = AdapterContext;
 

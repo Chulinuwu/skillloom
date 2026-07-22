@@ -1,6 +1,6 @@
 import type { HubAuthorizationContext } from "../auth/index.js";
 
-export type BrainMcpToolName = "brain_search" | "brain_read" | "brain_capture" | "brain_update" | "brain_link";
+export type BrainMcpToolName = "brain_search" | "brain_retrieve" | "brain_health" | "brain_read" | "brain_capture" | "brain_update" | "brain_link";
 export type RegistryMcpToolName = "skill_releases" | "skill_read" | "skill_propose" | "skill_publish";
 export type HubMcpToolName = BrainMcpToolName | RegistryMcpToolName;
 export type RegistryMcpReleasesInput = Readonly<{ limit?: number }>;

@@ -17,6 +17,7 @@ import { assertBaseState } from "./_base-policy.js";
 import { errorMessage, failPromotionCheckpoint, recordPromotionFailure } from "./_promotion-failure.js";
 import type { PromotionApproval, PromotionContext, PromotionHooks, PromotionTarget } from "./types.js";
 import { evaluateAutoPromotion } from "../policy/evaluate.js";
+import { assertAuthoritativeWorkflowProof } from "../policy/workflow-proof.js";
 
 export async function promoteCandidate(
   context: PromotionContext,
@@ -58,6 +59,10 @@ export async function promoteCandidate(
   } else {
     assertPromotionFindings(validation.findings, approval.acceptWarnings);
   }
+  assertAuthoritativeWorkflowProof(candidate.governedWorkflowProof, approval.workflowProof, {
+    candidateId,
+    packageHash: validation.packageHash
+  });
   const operationId = `op-promote-${randomUUID()}`;
   const promotionId = `promo-${randomUUID()}`;
   const resolvedTargets = await resolvePromotionTargets(context, validation.metadata.name, targets, promotionId);

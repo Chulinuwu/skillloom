@@ -33,6 +33,16 @@ export class BrainIdempotencyConflictError extends BrainError {
   }
 }
 
+export class BrainImmutableSourceError extends BrainError {
+  constructor(readonly artifactId: string) {
+    super(`Brain source artifact ${artifactId} is immutable`, "BRAIN_IMMUTABLE_SOURCE");
+  }
+}
+export class BrainSourceSensitivityMismatchError extends BrainError {
+  constructor(readonly contentHash: string) {
+    super(`Brain source ${contentHash} already exists with a different sensitivity`, "BRAIN_SOURCE_SENSITIVITY_MISMATCH");
+  }
+}
 export class BrainStorageCorruptionError extends BrainError {
   constructor(message: string) {
     super(message, "BRAIN_STORAGE_CORRUPTION");

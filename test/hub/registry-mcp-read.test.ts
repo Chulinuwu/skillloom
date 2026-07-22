@@ -13,6 +13,7 @@ import {
   type RegistryRemotePort
 } from "../../src/hub/client/index.js";
 import { createHubAuthorizationService, type HubAuthorizationContext } from "../../src/hub/auth/index.js";
+import { parseRegistryMcpPropose, parseRegistryMcpPublish } from "../../src/hub/mcp/schema.js";
 import { parseRegistryMcpRead, parseRegistryMcpReleases } from "../../src/hub/mcp/registry-read-schema.js";
 import {
   createPackageBlob,
@@ -156,6 +157,43 @@ test("MCP reader schemas and bridge adapter stay strict and bounded", async () =
     { tool: "read", releaseId: "release-2" }
   ]);
 });
+test("MCP skill mutation bridge preserves workflow proof and rejects malformed proof", async () => {
+  const proof = workflowProof("candidate-mcp-1", `sha256-v2:${"b".repeat(64)}`);
+  assert.deepEqual(parseRegistryMcpPropose({ ...mcpProposal(), workflowProof: proof }).workflowProof, proof);
+  assert.deepEqual(parseRegistryMcpPublish({
+    requestId: randomUUID(),
+    candidateId: "candidate-mcp-1",
+    version: "1.0.0",
+    channel: "stable",
+    workflowProof: proof
+  }).workflowProof, proof);
+  assert.throws(() => parseRegistryMcpPropose({ ...mcpProposal(), workflowProof: { ...proof, extra: true } }), /unexpected field extra/);
+  const calls: unknown[] = [];
+  const registry: RegistryMutationApi & RegistryReadApi = {
+    listStableReleases: async () => { throw new Error("not called"); },
+    readStableRelease: async () => { throw new Error("not called"); },
+    propose: async (requestId, input) => {
+      calls.push({ tool: "propose", requestId, workflowProof: input.workflowProof });
+      return { candidate: {} as never, validation: {} as never };
+    },
+    publish: async (requestId, candidateId, version, workflowProof) => {
+      calls.push({ tool: "publish", requestId, candidateId, version, workflowProof });
+      return { release: {} as never, manifest: {} as never };
+    }
+  };
+  const adapter = new HubApiBridgeAdapter({ brain: unusedBrainApi(), registry });
+  const proposeId = randomUUID();
+  const publishId = randomUUID();
+  await adapter.call({ name: "skill_propose", arguments: { ...mcpProposal(), requestId: proposeId, workflowProof: proof } });
+  await adapter.call({
+    name: "skill_publish",
+    arguments: { requestId: publishId, candidateId: "candidate-mcp-1", version: "1.0.0", channel: "stable", workflowProof: proof }
+  });
+  assert.deepEqual(calls, [
+    { tool: "propose", requestId: proposeId, workflowProof: proof },
+    { tool: "publish", requestId: publishId, candidateId: "candidate-mcp-1", version: "1.0.0", workflowProof: proof }
+  ]);
+});
 
 function routerClient(
   router: ReturnType<typeof createRegistryHttpRouter>,
@@ -278,9 +316,42 @@ function unusedBrainApi(): BrainApi {
   const unused = async (): Promise<never> => { throw new Error("Brain API was not called"); };
   return {
     search: unused,
+    retrieve: unused,
+    health: unused,
     read: unused,
     capture: unused,
     update: unused,
     link: unused
+  };
+}
+function mcpProposal() {
+  return {
+    requestId: randomUUID(),
+    name: "shared-skill",
+    baseReleaseHash: null,
+    capabilities: ["filesystem-read"],
+    provenance: [],
+    files: [{ relativePath: "SKILL.md", mode: 0o644, content: "safe" }]
+  };
+}
+function workflowProof(candidateId: string, packageHash: string) {
+  return {
+    schemaVersion: "skillloom-workflow-proof-v1" as const,
+    decisionId: "proof-mcp-1",
+    idempotencyKey: "proof-mcp-request-1",
+    verdict: "passed" as const,
+    workflow: {
+      artifactId: "workflow-mcp-1",
+      revision: "1",
+      contentHash: `sha256:${"a".repeat(64)}`
+    },
+    candidate: { candidateId, packageHash },
+    verifier: {
+      kind: "held-out-evaluation" as const,
+      summary: "MCP workflow evaluation passed",
+      evidence: "MCP bridge preserved the proof"
+    },
+    provenanceHashes: [],
+    decidedAt: "2026-07-21T00:00:00.000Z"
   };
 }
