@@ -11,14 +11,18 @@ import {
 import { readHubTrust } from "../hub/config/index.js";
 import type { Scope } from "../domain/types.js";
 import type { BridgeStdioOptions } from "../bridge/index.js";
+import { HostService } from "../host/service.js";
 import { LazyHubApiBridgeAdapter } from "./bridge-remote.js";
 import { TerminalConsentPort } from "./consent.js";
+import { SetupEnvironmentDetector } from "./environment.js";
+import { DynamicSetupGuidanceSources } from "./guidance-sources.js";
 import { HarnessInstaller } from "./harness-installer.js";
 import { HubSetupAdapter, openDefaultHubSession } from "./hub-adapter.js";
 import { resolvePackageRoot } from "./package-root.js";
 import { PortableSkillInstaller } from "./portable-skills.js";
 import { SystemProcessPort } from "./process.js";
 import { SetupService } from "./service.js";
+import { SetupRolePlanner } from "./role-plan.js";
 import { TailscaleProcessAdapter } from "./tailscale-process.js";
 import { StableReleaseInstaller } from "./stable-apply.js";
 
@@ -36,6 +40,7 @@ async function createSetupService(root: string, scope: Scope): Promise<SetupServ
   const packageRoot = resolvePackageRoot();
   const packageVersion = await readPackageVersion(packageRoot);
   const processes = new SystemProcessPort();
+  const guidanceSources = new DynamicSetupGuidanceSources(processes);
   return new SetupService(
     new HubSetupAdapter(
       packageVersion,
@@ -45,7 +50,13 @@ async function createSetupService(root: string, scope: Scope): Promise<SetupServ
     ),
     new HarnessInstaller(processes, new PortableSkillInstaller()),
     new TerminalConsentPort(),
-    { root, stateRoot: join(root, ".skillloom", "hub"), packageRoot, packageVersion }
+    { root, stateRoot: join(root, ".skillloom", "hub"), packageRoot, packageVersion },
+    new SetupEnvironmentDetector(processes),
+    new SetupRolePlanner(guidanceSources),
+    new HostService(
+      { processes, consent: new TerminalConsentPort() },
+      { packageRoot, hostRoot: join(root, ".skillloom", "host"), env: process.env }
+    )
   );
 }
 

@@ -102,9 +102,30 @@ test("parses explicit Hub links and host lifecycle commands", () => {
     yes: true,
     json: false
   });
+  assert.deepEqual(parseArguments(["setup", "--role", "main-hub", "--target", "auto", "--yes"]), {
+    command: "setup",
+    target: "auto",
+    hub: "auto",
+    role: "main-hub",
+    scope: "user",
+    yes: true,
+    json: false
+  });
+  assert.deepEqual(parseArguments(["setup", "--role", "local-only", "--hub", "local"]), {
+    command: "setup",
+    target: "auto",
+    hub: "local",
+    role: "local-only",
+    scope: "user",
+    yes: false,
+    json: false
+  });
   assert.deepEqual(parseArguments(["host", "install", "--yes", "--json"]), { command: "host", action: "install", yes: true, json: true });
   assert.deepEqual(parseArguments(["host", "status"]), { command: "host", action: "status", yes: false, json: false });
   assert.throws(() => parseArguments(["setup", "--hub", "local", "--hub-url", "https://skillloom.example.ts.net"]), /cannot be combined/u);
+  assert.throws(() => parseArguments(["setup", "--role", "main-hub", "--hub-url", "https://skillloom.example.ts.net"]), /main-hub/u);
+  assert.throws(() => parseArguments(["setup", "--role", "local-only"]), /requires --hub local/u);
+  assert.throws(() => parseArguments(["setup", "--role", "worker"]), /--role/u);
   assert.throws(() => parseArguments(["host", "status", "--yes"]), /does not accept/u);
 });
 test("setup rejects secret-bearing and endpoint override flags", () => {
@@ -134,6 +155,27 @@ test("parses learning modes and policy approval", () => {
   assert.deepEqual(parseArguments(["observe", "--source", "codex", "--outcome", "no-op", "--summary", "nothing reusable"]), {
     command: "observe", source: "codex", outcome: "no-op", summary: "nothing reusable", json: false
   });
+  assert.deepEqual(parseArguments([
+    "observe",
+    "--source", "claude",
+    "--outcome", "memory",
+    "--summary", "bounded",
+    "--task-id", "task-1",
+    "--task-outcome", "success",
+    "--evidence", "test:targeted tests passed",
+    "--verifier", "typecheck:passed:tsc passed"
+  ]), {
+    command: "observe",
+    source: "claude",
+    outcome: "memory",
+    summary: "bounded",
+    taskId: "task-1",
+    taskOutcome: "success",
+    evidence: ["test:targeted tests passed"],
+    verifier: ["typecheck:passed:tsc passed"],
+    json: false
+  });
+  assert.deepEqual(parseArguments(["consolidate-learning"]), { command: "consolidate-learning", json: false });
   assert.deepEqual(parseArguments(["promote", "cand-1", "--target", "codex", "--policy"]), {
     command: "promote", targetMode: "scoped", candidateId: "cand-1", targets: ["codex"], scope: "project",
     yes: false, acceptWarnings: false, policy: true, json: false

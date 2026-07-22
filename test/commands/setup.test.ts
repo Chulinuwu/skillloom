@@ -8,7 +8,7 @@ test("setup command passes the parsed contract to the service", async () => {
   const service: SetupServicePort = {
     async setup(request) {
       requests.push(request);
-      return { command: "setup", hub: { mode: "local-only" }, surfaces: null, targets: [], reconciled: null };
+      return { command: "setup", hub: { mode: "local-only" }, host: null, surfaces: null, targets: [], reconciled: null };
     },
     async sync() {
       throw new Error("unexpected sync");

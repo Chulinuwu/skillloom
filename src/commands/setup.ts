@@ -12,6 +12,7 @@ export async function setupCommand(
     hub: command.hub,
     ...(command.hubUrl === undefined ? {} : { hubUrl: command.hubUrl }),
     scope: command.scope,
-    yes: command.yes
+    yes: command.yes,
+    ...(command.role === undefined ? {} : { role: command.role })
   });
 }

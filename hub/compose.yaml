@@ -1,43 +1,11 @@
 services:
-  tailscale:
-    image: tailscale/tailscale:v1.92.0
-    restart: unless-stopped
-    hostname: skillloom-hub
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    environment:
-      TS_AUTHKEY: ${TS_AUTHKEY:-}
-      TS_AUTH_ONCE: "true"
-      TS_HOSTNAME: ${TS_HOSTNAME:-skillloom-hub}
-      TS_STATE_DIR: /var/lib/tailscale
-      TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:---advertise-tags=tag:skillloom-hub}
-      SKILLLOOM_SERVE_SERVICE: ${SKILLLOOM_SERVE_SERVICE:-svc:skillloom}
-      SKILLLOOM_SERVE_BACKEND: ${SKILLLOOM_SERVE_BACKEND:-http://127.0.0.1:8787}
-      SKILLLOOM_OBSIDIAN_SERVE_SERVICE: ${SKILLLOOM_OBSIDIAN_SERVE_SERVICE:-svc:skillloom-obsidian}
-      SKILLLOOM_OBSIDIAN_SERVE_BACKEND: ${SKILLLOOM_OBSIDIAN_SERVE_BACKEND:-http://127.0.0.1:3000}
-      SKILLLOOM_APP_CAP: ${SKILLLOOM_APP_CAP:-skillloom.io/cap/skillloom}
-    volumes:
-      - ${SKILLLOOM_TAILSCALE_STATE_DIR:-./tailscale-state}:/var/lib/tailscale
-      - ./scripts/tailscale-entrypoint.sh:/usr/local/bin/skillloom-tailscale-entrypoint.sh:ro
-    entrypoint: ["/usr/local/bin/skillloom-tailscale-entrypoint.sh"]
-    healthcheck:
-      test: ["CMD", "tailscale", "status", "--json"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-
   skillloom-hub:
     build:
       context: ..
       dockerfile: hub/Dockerfile
     restart: unless-stopped
-    network_mode: service:tailscale
-    depends_on:
-      tailscale:
-        condition: service_healthy
+    ports:
+      - "127.0.0.1:8787:8787"
     environment:
       SKILLLOOM_HUB_BIND_HOST: 127.0.0.1
       SKILLLOOM_HUB_PORT: 8787
@@ -48,10 +16,9 @@ services:
   obsidian:
     image: ${SKILLLOOM_OBSIDIAN_IMAGE:-lscr.io/linuxserver/obsidian:v1.12.7-ls139}
     restart: unless-stopped
-    network_mode: service:tailscale
+    ports:
+      - "127.0.0.1:3000:3000"
     depends_on:
-      tailscale:
-        condition: service_healthy
       skillloom-hub:
         condition: service_healthy
     environment:
@@ -64,4 +31,4 @@ services:
     shm_size: 1gb
     volumes:
       - ${SKILLLOOM_OBSIDIAN_CONFIG_DIR:-./obsidian-config}:/config
-      - ${SKILLLOOM_HUB_DATA_DIR:-./data}/brain/vault:/config/Documents/Skillloom:ro
+      - ${SKILLLOOM_HUB_DATA_DIR:-./data}/brain/projections/obsidian:/config/Documents/Skillloom:ro

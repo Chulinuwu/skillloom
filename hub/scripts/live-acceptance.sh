@@ -130,7 +130,7 @@ compose() {
 }
 
 read_tailscale_identity() {
-  compose exec -T tailscale tailscale status --json 2>/dev/null \
+  tailscale status --json 2>/dev/null \
     | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const j=JSON.parse(s);const id=j.Self&&j.Self.ID;if(typeof id!=="string"||!id)process.exit(1);process.stdout.write(id)})'
 }
 
@@ -152,17 +152,19 @@ run_server_phase() {
   [ -f "$env_file" ] || fail "compose-env" "compose environment file is required on the Hub host"
 
   services="$(compose config --services)" || fail "compose-services" "could not inspect Compose services"
-  expected_services="$(printf '%s\n' obsidian skillloom-hub tailscale | LC_ALL=C sort)"
+  expected_services="$(printf '%s\n' obsidian skillloom-hub | LC_ALL=C sort)"
   actual_services="$(printf '%s\n' "$services" | LC_ALL=C sort)"
-  [ "$actual_services" = "$expected_services" ] || fail "compose-services" "expected only tailscale, skillloom-hub, and obsidian"
+  [ "$actual_services" = "$expected_services" ] || fail "compose-services" "expected only skillloom-hub and obsidian"
   record_check "compose-services"
 
   compose_config="$(compose config --no-interpolate)" || fail "compose-config" "could not render Compose configuration"
-  printf '%s\n' "$compose_config" | grep -q 'network_mode: service:tailscale' \
-    || fail "compose-network" "Hub must share the tailscale network namespace"
-  record_check "compose-network"
-  if printf '%s\n' "$compose_config" | grep -Eq '^[[:space:]]*(ports|expose):|published:'; then
-    fail "compose-no-public-ports" "Compose publishes a backend port"
+  printf '%s\n' "$compose_config" | grep -q '127.0.0.1:8787:8787' \
+    || fail "compose-loopback-bindings" "Hub must bind only to host loopback"
+  printf '%s\n' "$compose_config" | grep -q '127.0.0.1:3000:3000' \
+    || fail "compose-loopback-bindings" "Obsidian must bind only to host loopback"
+  record_check "compose-loopback-bindings"
+  if printf '%s\n' "$compose_config" | grep -Eq '0\.0\.0\.0|\[::\]|network_mode: service:tailscale|image: tailscale/tailscale'; then
+    fail "compose-no-public-ports" "Compose exposes a backend outside host loopback or uses the sidecar default"
   fi
   record_check "compose-no-public-ports"
 
@@ -171,8 +173,9 @@ run_server_phase() {
   [ "$actual_running" = "$expected_services" ] || fail "compose-running" "all exact Compose services must be running"
   record_check "compose-running"
 
-  serve_status="$(compose exec -T tailscale tailscale serve status)" || fail "serve-private" "could not inspect Tailscale Serve"
-  printf '%s\n' "$serve_status" | grep -q 'svc:skillloom' || fail "serve-private" "svc:skillloom is not advertised"
+  serve_status="$(tailscale serve status)" || fail "serve-private" "could not inspect Tailscale Serve"
+  printf '%s\n' "$serve_status" | grep -q '127.0.0.1:8787' || fail "serve-private" "Hub backend is not advertised"
+  printf '%s\n' "$serve_status" | grep -q '127.0.0.1:3000' || fail "serve-private" "Obsidian backend is not advertised"
   if printf '%s\n' "$serve_status" | grep -qi 'funnel'; then
     fail "serve-private" "Funnel appears in Tailscale Serve status"
   fi
@@ -181,14 +184,13 @@ run_server_phase() {
   curl -fsS --connect-timeout 3 --max-time 10 -- "$hub_url/healthz" >/dev/null \
     || fail "magicdns-https" "Hub health is not reachable through MagicDNS HTTPS"
   record_check "magicdns-https"
-  if curl -fsS --connect-timeout 1 --max-time 2 -- "http://127.0.0.1:${SKILLLOOM_HUB_PORT:-8787}/healthz" >/dev/null 2>&1; then
-    fail "direct-backend-unreachable" "Hub backend is reachable from the Docker host"
-  fi
-  record_check "direct-backend-unreachable"
+  curl -fsS --connect-timeout 1 --max-time 2 -- "http://127.0.0.1:${SKILLLOOM_HUB_PORT:-8787}/healthz" >/dev/null \
+    || fail "loopback-backend-reachable" "Hub backend is not reachable on host loopback for Serve"
+  record_check "loopback-backend-reachable"
 
   before_tailscale="$(read_tailscale_identity)" || fail "identity-persistence" "could not read Tailscale identity before restart"
   before_hub="$(read_hub_identity)" || fail "identity-persistence" "could not read Hub identity before restart"
-  compose restart tailscale skillloom-hub >/dev/null || fail "identity-persistence" "could not restart Hub services"
+  compose restart skillloom-hub >/dev/null || fail "identity-persistence" "could not restart Hub service"
   attempt=0
   after_tailscale=""
   after_hub=""
@@ -333,7 +335,7 @@ aggregate_metadata() {
     const read=path=>JSON.parse(fs.readFileSync(path,"utf8"));
     const server=read(serverPath), contributor=read(contributorPath), restricted=read(restrictedPath);
     const required={
-      server:["compose-services","compose-network","compose-no-public-ports","compose-running","serve-private","magicdns-https","direct-backend-unreachable","identity-persistence"],
+      server:["compose-services","compose-loopback-bindings","compose-no-public-ports","compose-running","serve-private","magicdns-https","loopback-backend-reachable","identity-persistence"],
       contributor:["negotiation-capabilities","contributor-capture"],
       restricted:["negotiation-capabilities","restricted-read","spoofed-publish-denied"]
     };

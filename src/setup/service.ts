@@ -7,6 +7,9 @@ import type {
   HubSetupDiscovery,
   HubSetupPort,
   SetupHarnessTarget,
+  SetupEnvironmentPort,
+  SetupGuidancePort,
+  SetupHostPort,
   SetupRequest,
   SetupResult,
   SetupServicePort
@@ -26,11 +29,27 @@ export class SetupService implements SetupServicePort {
     private readonly hub: HubSetupPort,
     private readonly installer: HarnessInstallerPort,
     private readonly consent: ConsentPort,
-    private readonly options: SetupServiceOptions
+    private readonly options: SetupServiceOptions,
+    private readonly environment?: SetupEnvironmentPort,
+    private readonly guidance?: SetupGuidancePort,
+    private readonly host?: SetupHostPort
   ) {}
 
   async setup(request: SetupRequest): Promise<SetupResult> {
     const root = this.options.root ?? this.options.stateRoot;
+    const plan = await this.plan(request);
+    if (plan?.role === "role-required") {
+      throw new UsageError("Choose setup role: --role main-hub, --role client-node, or --role local-only with --hub local");
+    }
+    if (plan?.status === "blocked") {
+      throw new UsageError(`Setup plan is blocked: ${plan.warnings.join(" ")}`);
+    }
+    if (request.role === "main-hub") {
+      await this.requireMainHubConsent(request);
+      const host = await this.installHost();
+      const targets = await this.installTargets(request);
+      return { command: "setup", hub: { mode: "local-only" }, host, surfaces: host.surfaces, targets, reconciled: null, ...(plan ? { plan } : {}) };
+    }
     const discovery: HubSetupDiscovery = request.hub === "local" ? { mode: "local-only" } : await this.hub.discover(root, request.hubUrl);
     if (request.hub === "auto" && discovery.mode === "local-only") {
       throw new UsageError("Skillloom Hub was not reachable; rerun with --hub local for explicit local-only setup");
@@ -41,10 +60,10 @@ export class SetupService implements SetupServicePort {
       await this.hub.verifyBrainRead(root);
       const reconciled = await this.hub.reconcile({ root, apply: true, strictInitial: true });
       const targets = await this.installTargets(request);
-      return { command: "setup", hub: discovery, surfaces: resolveSetupSurfaces(discovery), targets, reconciled };
+      return { command: "setup", hub: discovery, host: null, surfaces: resolveSetupSurfaces(discovery), targets, reconciled, ...(plan ? { plan } : {}) };
     }
     const targets = await this.installTargets(request);
-    return { command: "setup", hub: discovery, surfaces: null, targets, reconciled: null };
+    return { command: "setup", hub: discovery, host: null, surfaces: null, targets, reconciled: null, ...(plan ? { plan } : {}) };
   }
 
   async sync(apply: boolean) {
@@ -60,6 +79,24 @@ export class SetupService implements SetupServicePort {
     if (!await this.consent.confirm(`Trust ${destination} and install Skillloom for this ${request.scope}?`)) {
       throw new UsageError("Setup declined; no trust or installation changes were made");
     }
+  }
+
+  private async requireMainHubConsent(request: SetupRequest): Promise<void> {
+    if (request.yes) return;
+    if (!this.consent.interactive) {
+      throw new UsageError("Non-interactive Main Hub setup requires --yes to start Docker, configure private Tailscale Serve, and install local integrations");
+    }
+    const accepted = await this.consent.confirm(`Start the private Docker Hub stack, configure private Tailscale Serve, and install Skillloom for this ${request.scope}?`);
+    if (!accepted) throw new UsageError("Main Hub setup declined; no host or installation changes were made");
+  }
+
+  private async installHost() {
+    if (!this.host) throw new UsageError("Main Hub setup requires a host installer port");
+    const result = await this.host.install(true);
+    if (result.status !== "running" || !result.surfaces) {
+      throw new UsageError("Main Hub host install did not produce running Hub and Obsidian surfaces; local integrations were not installed");
+    }
+    return result;
   }
 
   private async installTargets(request: SetupRequest) {
@@ -99,6 +136,11 @@ export class SetupService implements SetupServicePort {
       }
     }
     return results;
+  }
+
+  private async plan(request: SetupRequest) {
+    if (!this.environment || !this.guidance) return undefined;
+    return await this.guidance.plan(request, await this.environment.detect());
   }
 }
 

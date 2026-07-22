@@ -1,4 +1,4 @@
-import type { Scope, SetupHubMode } from "../domain/types.js";
+import type { Scope, SetupHubMode, SetupRole } from "../domain/types.js";
 
 export type SetupHarnessTarget = "claude" | "codex" | "agents";
 export type SetupTarget = SetupHarnessTarget | "auto";
@@ -53,6 +53,20 @@ export interface HarnessInstallerPort {
   install(request: HarnessInstallRequest): Promise<HarnessInstallResult>;
 }
 
+export type SetupHostResult = {
+  command: "host";
+  action: "install" | "status";
+  status: "running" | "stopped";
+  root: string;
+  policyPath: string;
+  surfaces: SetupSurfaces | null;
+  nextActions: string[];
+};
+
+export interface SetupHostPort {
+  install(yes: boolean): Promise<SetupHostResult>;
+}
+
 export interface PortableSkillInstallerPort {
   install(packageRoot: string, destinationRoot: string): Promise<"installed" | "unchanged">;
 }
@@ -68,25 +82,70 @@ export interface ProcessPort {
   run(executable: string, args: string[], environment?: NodeJS.ProcessEnv): Promise<ProcessResult>;
 }
 
+export type SetupEnvironment = {
+  tailscale: "authenticated" | "needs-login" | "missing";
+  docker: "available" | "missing";
+};
+
+export type SetupGuidanceSource = {
+  kind: "official-doc" | "cli-help";
+  title: string;
+  url?: string;
+  fetchedAt: string;
+  pageDate?: string;
+  contentHash: string;
+  snippets: string[];
+};
+
+export type SetupPlanStep = {
+  id: string;
+  title: string;
+  action: "automatic" | "human";
+  command?: string;
+  verification: string;
+  sourceTitles?: string[];
+};
+
+export type SetupRolePlan = {
+  role: SetupRole | "role-required";
+  status: "ready" | "needs-human" | "blocked";
+  environment: SetupEnvironment;
+  sources: SetupGuidanceSource[];
+  steps: SetupPlanStep[];
+  checkpoints: string[];
+  warnings: string[];
+};
+
+export interface SetupGuidancePort {
+  plan(request: SetupRequest, environment: SetupEnvironment): Promise<SetupRolePlan>;
+}
+
+export interface SetupEnvironmentPort {
+  detect(): Promise<SetupEnvironment>;
+}
+
 export type SetupRequest = {
   target: SetupTarget;
   hub: SetupHubMode;
   hubUrl?: string;
   scope: Scope;
   yes: boolean;
+  role?: SetupRole;
 };
 
 export type SetupSurfaces = {
   hub: { url: string; externalPort: 443 };
-  obsidian: { url: string; externalPort: 443; internalPort: 3000; access: "read-only" };
+  obsidian: { url: string; externalPort: 8443; internalPort: 3000; access: "read-only" };
 };
 
 export type SetupResult = {
   command: "setup";
   hub: HubSetupDiscovery;
+  host: SetupHostResult | null;
   surfaces: SetupSurfaces | null;
   targets: HarnessInstallResult[];
   reconciled: HubReconcileResult | null;
+  plan?: SetupRolePlan;
 };
 
 export interface SetupServicePort {

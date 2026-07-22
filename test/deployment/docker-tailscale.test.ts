@@ -10,40 +10,37 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const read = (path: string) => readFile(join(root, path), "utf8");
 
-test("compose exposes Hub only through the Tailscale service namespace", async () => {
+test("compose exposes Hub only on host loopback for host Tailscale Serve", async () => {
   const compose = await read("hub/compose.yaml");
 
-  assert.match(compose, /image: tailscale\/tailscale:v1\.92\.0/u);
-  assert.match(compose, /network_mode: service:tailscale/u);
+  assert.doesNotMatch(compose, /image: tailscale\/tailscale/u);
+  assert.doesNotMatch(compose, /network_mode: service:tailscale/u);
+  assert.match(compose, /"127\.0\.0\.1:8787:8787"/u);
   assert.match(compose, /SKILLLOOM_HUB_BIND_HOST: 127\.0\.0\.1/u);
-  assert.match(compose, /SKILLLOOM_SERVE_SERVICE: \$\{SKILLLOOM_SERVE_SERVICE:-svc:skillloom\}/u);
-  assert.doesNotMatch(compose, /^\s*ports:/mu);
+  assert.doesNotMatch(compose, /TS_AUTHKEY/u);
+  assert.doesNotMatch(compose, /0\.0\.0\.0/u);
   assert.doesNotMatch(compose, /^\s*expose:/mu);
   assert.doesNotMatch(compose, /funnel/iu);
 });
-test("compose exposes a hardened read-only Obsidian surface through a separate Tailscale service", async () => {
-  const [compose, entrypoint] = await Promise.all([read("hub/compose.yaml"), read("hub/scripts/tailscale-entrypoint.sh")]);
+test("compose exposes a hardened read-only Obsidian surface through host Tailscale Serve", async () => {
+  const compose = await read("hub/compose.yaml");
   assert.match(compose, /lscr\.io\/linuxserver\/obsidian:v1\.12\.7-ls139/u);
+  assert.match(compose, /"127\.0\.0\.1:3000:3000"/u);
   assert.match(compose, /HARDEN_DESKTOP: "true"/u);
   assert.match(compose, /START_DOCKER: "false"/u);
   assert.match(compose, /SELKIES_ENABLE_SHARING: "false"/u);
-  assert.match(compose, /brain\/vault:\/config\/Documents\/Skillloom:ro/u);
-  assert.match(entrypoint, /--service="\$SKILLLOOM_OBSIDIAN_SERVE_SERVICE"/u);
-  assert.match(entrypoint, /SKILLLOOM_OBSIDIAN_SERVE_BACKEND/u);
+  assert.match(compose, /brain\/projections\/obsidian:\/config\/Documents\/Skillloom:ro/u);
 });
 
-test("tailscale entrypoint configures service serve with accepted app capabilities", async () => {
-  const entrypoint = await read("hub/scripts/tailscale-entrypoint.sh");
+test("host service configures private Tailscale Serve without Funnel or auth keys", async () => {
+  const service = await read("src/host/service.ts");
 
-  assert.match(entrypoint, /\/usr\/local\/bin\/containerboot &/u);
-  assert.match(entrypoint, /tailscale status --json/u);
-  assert.match(entrypoint, /tailscale serve/u);
-  assert.match(entrypoint, /--yes/u);
-  assert.match(entrypoint, /--service="\$SKILLLOOM_SERVE_SERVICE"/u);
-  assert.match(entrypoint, /--https=443/u);
-  assert.match(entrypoint, /--accept-app-caps="\$SKILLLOOM_APP_CAP"/u);
-  assert.doesNotMatch(entrypoint, /funnel/iu);
-  assert.doesNotMatch(entrypoint, /TS_SERVE_CONFIG/u);
+  assert.match(service, /findExecutable\("tailscale"\)/u);
+  assert.match(service, /"serve", "--bg", "--https=443", "http:\/\/127\.0\.0\.1:8787"/u);
+  assert.match(service, /"serve", "--bg", "--https=8443", "http:\/\/127\.0\.0\.1:3000"/u);
+  assert.match(service, /"serve", "status"/u);
+  assert.doesNotMatch(service, /TS_AUTHKEY/u);
+  assert.doesNotMatch(service, /funnel [^-]/iu);
 });
 
 test("deployment artifacts keep state persistent and private", async () => {
@@ -54,9 +51,7 @@ test("deployment artifacts keep state persistent and private", async () => {
   ]);
 
   assert.match(compose, /SKILLLOOM_HUB_DATA_DIR:-\.\/data\}:\/data/u);
-  assert.match(compose, /SKILLLOOM_TAILSCALE_STATE_DIR:-\.\/tailscale-state\}:\/var\/lib\/tailscale/u);
   assert.match(ignore, /hub\/data\//u);
-  assert.match(ignore, /hub\/tailscale-state\//u);
   assert.match(ignore, /hub\/obsidian-config\//u);
   assert.match(dockerfile, /FROM node:24\.15\.0-bookworm-slim AS build/u);
   assert.match(dockerfile, /127\.0\.0\.1:8787\/healthz/u);
@@ -130,12 +125,12 @@ test("live acceptance harness separates server, remote actor, and aggregate phas
 test("server acceptance uses the exact Compose services and private Tailscale path", async () => {
   const script = await read("hub/scripts/live-acceptance.sh");
   assert.match(script, /docker compose -f "\$compose_file" --env-file "\$env_file"/u);
-  assert.match(script, /printf '%s\\n' obsidian skillloom-hub tailscale/u);
+  assert.match(script, /printf '%s\\n' obsidian skillloom-hub/u);
   assert.match(script, /compose config --services/u);
   assert.match(script, /compose ps --status running --services/u);
   assert.match(script, /tailscale serve status/u);
   assert.match(script, /healthz/u);
-  assert.match(script, /direct-backend-unreachable/u);
+  assert.match(script, /loopback-backend-reachable/u);
   assert.match(script, /identity-persistence/u);
   assert.match(script, /while \[ "\$attempt" -lt 60 \]/u);
   assert.doesNotMatch(script, /sleep 5/u);
@@ -176,12 +171,12 @@ test("aggregate phase passes only complete evidence with a canonical signing-key
     grantedCapabilities: [],
     checks: [
       "compose-services",
-      "compose-network",
+      "compose-loopback-bindings",
       "compose-no-public-ports",
       "compose-running",
       "serve-private",
       "magicdns-https",
-      "direct-backend-unreachable",
+      "loopback-backend-reachable",
       "identity-persistence"
     ]
   });

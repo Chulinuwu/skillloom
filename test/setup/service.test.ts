@@ -4,12 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { UsageError } from "../../src/domain/errors.js";
+import { SetupRolePlanner } from "../../src/setup/role-plan.js";
 import { SetupService } from "../../src/setup/service.js";
 import type {
   ConsentPort,
   HarnessInstallerPort,
   HubSetupPort,
-  SetupHarnessTarget
+  SetupHarnessTarget,
+  SetupHostPort
 } from "../../src/setup/types.js";
 
 test("non-interactive setup requires explicit trust consent before side effects", async () => {
@@ -205,6 +207,171 @@ test("auto setup fails instead of silently falling back when Hub is unavailable"
   await assert.rejects(() => readFile(join(stateRoot, "setup.json"), "utf8"));
 });
 
+test("main-hub role returns a local setup plan without trying client Hub discovery", async () => {
+  const calls: string[] = [];
+  const service = new SetupService(
+    hub(calls),
+    installer(calls),
+    consent(false, true),
+    { stateRoot: await mkdtemp(join(tmpdir(), "skillloom-setup-main-hub-")), packageRoot: "/package", packageVersion: "1.0.0" },
+    { async detect() {
+      calls.push("environment.detect");
+      return { tailscale: "authenticated", docker: "available" };
+    } },
+    { async plan() {
+      calls.push("guidance.plan");
+      return {
+        role: "main-hub",
+        status: "needs-human",
+        environment: { tailscale: "authenticated", docker: "available" },
+        sources: [{ kind: "official-doc", title: "Tailscale Serve", url: "https://tailscale.com/docs/features/tailscale-serve", fetchedAt: "2026-07-22T00:00:00.000Z", contentHash: "sha256:test", snippets: ["tailscale serve"] }],
+        steps: [{ id: "start-private-stack", title: "Start stack", action: "automatic", command: "skillloom host install --yes", verification: "status" }],
+        checkpoints: ["environment-detected"],
+        warnings: ["Tailscale Funnel is not part of Skillloom setup; use private Tailscale Serve only."]
+      };
+    } },
+    host(calls)
+  );
+  const result = await service.setup({ target: "agents", hub: "auto", scope: "user", yes: true, role: "main-hub" });
+  assert.equal(result.hub.mode, "local-only");
+  assert.equal(result.plan?.role, "main-hub");
+  assert.equal(result.host?.status, "running");
+  assert.equal(result.surfaces?.obsidian.access, "read-only");
+  assert.deepEqual(calls, ["environment.detect", "guidance.plan", "host.install:true", "detect:agents", "install:agents"]);
+});
+
+test("main-hub host failure stops before integration checkpoints", async () => {
+  const calls: string[] = [];
+  const stateRoot = await mkdtemp(join(tmpdir(), "skillloom-setup-host-fail-"));
+  const service = new SetupService(
+    hub(calls),
+    installer(calls),
+    consent(false, true),
+    { stateRoot, packageRoot: "/package", packageVersion: "1.0.0" },
+    { async detect() {
+      calls.push("environment.detect");
+      return { tailscale: "authenticated", docker: "available" };
+    } },
+    { async plan() {
+      calls.push("guidance.plan");
+      return {
+        role: "main-hub",
+        status: "ready",
+        environment: { tailscale: "authenticated", docker: "available" },
+        sources: [{ kind: "official-doc", title: "Tailscale Serve", fetchedAt: "2026-07-22T00:00:00.000Z", contentHash: "sha256:test", snippets: ["tailscale serve"] }],
+        steps: [{ id: "start-private-stack", title: "Start stack", action: "automatic", command: "skillloom host install --yes", verification: "status" }],
+        checkpoints: ["environment-detected"],
+        warnings: []
+      };
+    } },
+    host(calls, new Error("compose failed"))
+  );
+
+  await assert.rejects(() => service.setup({ target: "auto", hub: "auto", scope: "user", yes: true, role: "main-hub" }), /compose failed/u);
+  assert.deepEqual(calls, ["environment.detect", "guidance.plan", "host.install:true"]);
+  await assert.rejects(() => readFile(join(stateRoot, "setup.json"), "utf8"));
+});
+
+test("ambiguous role-aware setup stops before discovery or installation", async () => {
+  const calls: string[] = [];
+  const service = new SetupService(
+    hub(calls),
+    installer(calls),
+    consent(false, true),
+    { stateRoot: await mkdtemp(join(tmpdir(), "skillloom-setup-role-required-")), packageRoot: "/package", packageVersion: "1.0.0" },
+    { async detect() {
+      calls.push("environment.detect");
+      return { tailscale: "authenticated", docker: "available" };
+    } },
+    { async plan() {
+      calls.push("guidance.plan");
+      return {
+        role: "role-required",
+        status: "blocked",
+        environment: { tailscale: "authenticated", docker: "available" },
+        sources: [],
+        steps: [{ id: "choose-setup-role", title: "Choose role", action: "human", verification: "rerun" }],
+        checkpoints: ["environment-detected"],
+        warnings: ["Setup role is ambiguous; choose Main Hub, Client Node, or This Machine Only before any setup side effects."]
+      };
+    } }
+  );
+  await assert.rejects(
+    () => service.setup({ target: "auto", hub: "auto", scope: "user", yes: true }),
+    /Choose setup role/u
+  );
+  assert.deepEqual(calls, ["environment.detect", "guidance.plan"]);
+});
+
+test("real role planner blocks ambiguous setup before discovery or installation", async () => {
+  const calls: string[] = [];
+  const service = new SetupService(
+    hub(calls),
+    installer(calls),
+    consent(false, true),
+    { stateRoot: await mkdtemp(join(tmpdir(), "skillloom-setup-real-role-required-")), packageRoot: "/package", packageVersion: "1.0.0" },
+    { async detect() {
+      calls.push("environment.detect");
+      return { tailscale: "authenticated", docker: "available" };
+    } },
+    new SetupRolePlanner({ async collect() {
+      calls.push("sources.collect");
+      return [{ kind: "official-doc", title: "Tailscale Serve", url: "https://tailscale.com/docs/features/tailscale-serve", fetchedAt: "2026-07-22T00:00:00.000Z", contentHash: "sha256:test", snippets: ["tailscale serve"] }];
+    } })
+  );
+  await assert.rejects(
+    () => service.setup({ target: "auto", hub: "auto", scope: "user", yes: true }),
+    /Choose setup role/u
+  );
+  assert.deepEqual(calls, ["environment.detect", "sources.collect"]);
+});
+
+test("client-node blocked dynamic guidance stops before Hub discovery and installation", async () => {
+  const calls: string[] = [];
+  const service = new SetupService(
+    hub(calls),
+    installer(calls),
+    consent(false, true),
+    { stateRoot: await mkdtemp(join(tmpdir(), "skillloom-setup-client-blocked-")), packageRoot: "/package", packageVersion: "1.0.0" },
+    { async detect() {
+      calls.push("environment.detect");
+      return { tailscale: "authenticated", docker: "available" };
+    } },
+    new SetupRolePlanner({ async collect() {
+      calls.push("sources.collect");
+      return [];
+    } })
+  );
+  await assert.rejects(
+    () => service.setup({ target: "auto", hub: "auto", scope: "user", yes: true, role: "client-node" }),
+    /Setup plan is blocked/u
+  );
+  assert.deepEqual(calls, ["environment.detect", "sources.collect"]);
+});
+
+test("main-hub missing required guidance evidence stops before installation", async () => {
+  const calls: string[] = [];
+  const service = new SetupService(
+    hub(calls),
+    installer(calls),
+    consent(false, true),
+    { stateRoot: await mkdtemp(join(tmpdir(), "skillloom-setup-main-blocked-")), packageRoot: "/package", packageVersion: "1.0.0" },
+    { async detect() {
+      calls.push("environment.detect");
+      return { tailscale: "authenticated", docker: "available" };
+    } },
+    new SetupRolePlanner({ async collect() {
+      calls.push("sources.collect");
+      return [{ kind: "official-doc", title: "Unrelated", fetchedAt: "2026-07-22T00:00:00.000Z", contentHash: "sha256:test", snippets: ["portable skills"] }];
+    } })
+  );
+  await assert.rejects(
+    () => service.setup({ target: "auto", hub: "auto", scope: "user", yes: true, role: "main-hub" }),
+    /missing required official or CLI evidence/u
+  );
+  assert.deepEqual(calls, ["environment.detect", "sources.collect"]);
+});
+
 function hub(calls: string[], options: { localOnly?: boolean; verifyError?: Error; reconcileOffline?: boolean } = {}): HubSetupPort {
   return {
     async discover() {
@@ -251,6 +418,27 @@ function consent(interactive: boolean, accepted: boolean, calls?: string[]): Con
     async confirm() {
       calls?.push("consent.confirm");
       return accepted;
+    }
+  };
+}
+
+function host(calls: string[], error?: Error): SetupHostPort {
+  return {
+    async install(yes) {
+      calls.push(`host.install:${yes}`);
+      if (error) throw error;
+      return {
+        command: "host",
+        action: "install",
+        status: "running",
+        root: "/host",
+        policyPath: "/host/policy.hujson",
+        surfaces: {
+          hub: { url: "https://skillloom.example.ts.net", externalPort: 443 },
+          obsidian: { url: "https://skillloom.example.ts.net:8443", externalPort: 8443, internalPort: 3000, access: "read-only" }
+        },
+        nextActions: ["Open Obsidian from another tailnet device"]
+      };
     }
   };
 }

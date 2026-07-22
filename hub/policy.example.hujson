@@ -1,4 +1,5 @@
 {
+  // Advanced team/headless template only. The default personal Main Hub path uses host Tailscale Serve on the authenticated host identity and does not require svc:* Services.
   groups: {
     "group:skillloom-contributors": ["replace-me@example.com"],
     "group:skillloom-promoters": ["replace-me-promoter@example.com"],
