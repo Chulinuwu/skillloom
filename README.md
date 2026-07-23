@@ -32,21 +32,21 @@ Local-first still matters. Every machine keeps its own `.skillloom/` store for l
 
 ## Quick start
 
-Install the Skillloom plugin on each Claude Code or Codex machine, start a new task, and invoke `$setup-skillloom`. The plugin bundles the setup runner and MCP bridge, so the normal path does not require a global `skillloom` binary.
+Install the Skillloom plugin on each Claude Code or Codex machine, start a new task, and invoke `$setup-skillloom`. The plugin bundles the setup runner and MCP bridge, so the normal path does not require a global `skillloom` binary. Successful setup reports clickable Hub and Obsidian links, explains the active mode, and gives a copy-ready conversational example.
 
 The setup skill asks at most one role question before setup side effects:
 
 | Role | Choose this when | What setup handles |
 | --- | --- | --- |
-| Main Hub | This machine should host the private second brain | Installs local integrations, checks Docker and Tailscale, starts the loopback-only Docker stack after consent, configures private Tailscale Serve, and prints the Hub, Obsidian, and policy outputs |
+| Main Hub | This machine should host the private second brain | Installs local integrations, checks Docker and Tailscale, starts the loopback-only Docker stack after consent, configures private Tailscale Serve, and prints the Hub, Obsidian, and a personalized policy merge fragment |
 | Client Node | This machine should use an existing Hub | Accepts a pasted credential-free Hub URL or discovers a Hub, asks for trust, verifies Brain read access, reconciles releases, and installs local integrations |
 | This Machine Only | No shared Hub is needed | Installs local integrations and keeps all state on this machine |
 
 If the user pastes a credential-free Hub URL, setup treats the machine as a Client Node. If the user asks for local-only, setup treats it as This Machine Only.
 
-Setup does not ask users to paste Tailscale secrets into chat. It uses the host's authenticated Tailscale session for the default Main Hub path. If Docker, Tailscale login, HTTPS enablement, plugin trust, or tailnet policy approval is missing, setup stops at that human/admin boundary and prints the exact remaining action.
+Setup does not ask users to paste Tailscale secrets into chat. It uses the host's authenticated Tailscale session for the default Main Hub path. If Docker, Tailscale login, HTTPS enablement, plugin trust, or tailnet policy approval is missing, the setup skill preserves completed work and switches to a guided handoff. For Access controls, it searches the current official Tailscale guidance again, inspects the user's current editor when possible, and walks through the Visual editor's app-capability form one screen at a time. The generated policy file remains the exact source for personalized values; raw JSON merging is a fallback and never replaces the rest of the tailnet policy. The skill asks only for a localized `done`, then reruns the same setup flow and verifies both URLs plus the authenticated Hub handshake. The user does not need to copy recovery commands.
 
-Changing Tailscale and Docker instructions age quickly, so Skillloom does not bake those steps into the plugin prompt. The setup runner collects current guidance from allowlisted official docs or installed CLI help, records source URLs or command help, fetched time, page date when available, and content hash, then prints a source-bound plan.
+Changing Tailscale, Docker, and agent-host instructions age quickly, so Skillloom does not bake those steps into the plugin prompt. Every onboarding invocation performs a fresh lookup of current official guidance and ignores instructions remembered from earlier runs. The setup runner independently refetches allowlisted official pages with cache revalidation, falls back to installed CLI help only when the live fetch fails, records source URLs or command help, fetched time, page date when available, and content hash, then prints a source-bound plan.
 
 Default Hub surfaces after Main Hub setup:
 
@@ -54,6 +54,21 @@ Default Hub surfaces after Main Hub setup:
 - Obsidian Web UI: `https://<hub-host>.<MagicDNSSuffix>:8443` on Tailnet HTTPS port `8443`, forwarded to `http://127.0.0.1:3000`.
 
 No Docker application port is published to the LAN or internet. Tailscale Serve owns private HTTPS access. Do not enable Funnel for the Hub.
+
+## Talk to Skillloom
+
+Obsidian is the human view, not a command console. The normal workflow is a conversation with the agent:
+
+- Paste a paper and ask, "What does this change for our current design?"
+- Paste a news link and ask, "Summarize this, compare it with what we already know, and ask me if it is worth keeping."
+- Say, "Save this in Skillloom" when the current message already describes exactly what should be retained.
+- Ask, "What does my Brain know about this?" without opening the vault.
+
+The agent opens the current source, retrieves a bounded set of relevant Brain records, answers first, identifies useful connections or conflicts, and handles the save decision according to the active mode. Users do not need to know CLI commands, MCP tool names, artifact schemas, IDs, or filesystem paths.
+
+Invoke `$skillloom` when an explicit skill invocation is useful. Hosts that expose skills as slash commands may present the same skill as `/skillloom`, but ordinary requests such as "เก็บอันนี้ใน Skillloom" are intended to trigger the conversational workflow without either form.
+
+In `manual` and `policy`, Skillloom asks one natural confirmation before a Brain write unless the user already asked to save the material. In `hermes`, it may retain one safe, durable, source-backed outcome automatically and reports exactly what changed. All modes reject secrets, avoid duplicate records, preserve provenance, and keep executable Agent Skills behind their separate validation and promotion lifecycle.
 
 ## Obsidian access
 
@@ -104,13 +119,13 @@ Skillloom does not currently claim automatic whole-vault organization or claude-
 
 ## Modes
 
-The three public modes are stable presets over four automation dimensions.
+The three public modes are stable presets over five automation dimensions.
 
-| Preset | Review trigger | Brain capture | Retrieval | Skill promotion |
-| --- | --- | --- | --- | --- |
-| `manual` | `manual` | `manual` | `explicit` | `manual` with `--yes` |
-| `policy` | `manual` | `manual` | `explicit` | `policy` with `--policy` |
-| `hermes` | `task-end` | `auto-curated` | `auto-bounded` | `policy` with `--policy` |
+| Preset | Review trigger | Brain capture | Retrieval | Context refresh | Skill promotion |
+| --- | --- | --- | --- | --- | --- |
+| `manual` | `manual` | `manual` | `explicit` | `automatic` | `manual` with `--yes` |
+| `policy` | `manual` | `manual` | `explicit` | `automatic` | `policy` with `--policy` |
+| `hermes` | `meaningful-delta` | `auto-curated` | `auto-bounded` | `automatic` | `policy` with `--policy` |
 
 New stores default to `manual`. Existing v0.1 stores also load as `manual` without a destructive migration.
 
@@ -120,7 +135,11 @@ skillloom mode hermes
 skillloom mode --json
 ```
 
-`hermes` is the most automatic mode, but not a permissionless mode. A lifecycle-capable host can request bounded Brain recall at session start and one bounded learning decision at task end. Hermes auto-curates through authenticated MCP or HTTP under Contributor capability, not by editing canonical files. Procedural outcomes still go through immutable candidate capture, validation, policy, quarantine on rejection, and transactional promotion on approval.
+`hermes` is the most automatic mode, but not a permissionless mode. A lifecycle-capable host issues a private context capsule at session start and refreshes it after startup, clear, compact, a mode change, 10 cumulative tool calls, or 15 minutes. Context recovery only reorients the agent; it does not write knowledge. Automatic learning requires new work after the last checkpoint plus a meaningful durable signal such as edit-and-verification, multi-step research, or an explicit correction. A 15-minute review cooldown prevents repeated Stop-hook reviews, while `$autonomous-learning` remains available on demand.
+
+Here, "fresh" means the deterministic capsule lease still matches the session and mode and remains inside its time and tool budgets. It is not a claim that the model's hidden state can be inspected. Expiry forces a bounded reorientation from the latest goal and verified workspace state instead of using a visible style trick such as repeating the user's name.
+
+Hermes auto-curates through authenticated MCP or HTTP under Contributor capability, not by editing canonical files. Procedural outcomes still go through immutable candidate capture, validation, policy, quarantine on rejection, and transactional promotion on approval.
 
 Codex and other hosts that do not expose compatible plugin lifecycle hooks still use the same Brain, skills, and MCP tools, but Hermes lifecycle behavior is invoked by the user or host instead of automatic hooks.
 
@@ -288,4 +307,5 @@ python3 /path/to/skill-creator/scripts/quick_validate.py skills/autonomous-learn
 python3 /path/to/skill-creator/scripts/quick_validate.py skills/capture-learning
 python3 /path/to/skill-creator/scripts/quick_validate.py skills/curate-skills
 python3 /path/to/skill-creator/scripts/quick_validate.py skills/setup-skillloom
+python3 /path/to/skill-creator/scripts/quick_validate.py skills/skillloom
 ```
