@@ -43,24 +43,26 @@ export function parseBrainSourceMetadata(value: unknown): BrainSourceMetadata {
   const mediaType = optionalString(value.mediaType);
   const fetchedAt = optionalString(value.fetchedAt);
   const retrievedBy = optionalString(value.retrievedBy);
-  validateIsoTimestamp(value.capturedAt, "capturedAt");
-  if (fetchedAt !== undefined) validateIsoTimestamp(fetchedAt, "fetchedAt");
+  const capturedAt = canonicalIsoTimestamp(value.capturedAt, "capturedAt");
+  const canonicalFetchedAt = fetchedAt === undefined ? undefined : canonicalIsoTimestamp(fetchedAt, "fetchedAt");
   return {
     sourceId: value.sourceId,
-    capturedAt: value.capturedAt,
+    capturedAt,
     contentHash: value.contentHash,
     ...(uri === undefined ? {} : { uri }),
     ...(title === undefined ? {} : { title }),
     ...(mediaType === undefined ? {} : { mediaType }),
-    ...(fetchedAt === undefined ? {} : { fetchedAt }),
+    ...(canonicalFetchedAt === undefined ? {} : { fetchedAt: canonicalFetchedAt }),
     ...(retrievedBy === undefined ? {} : { retrievedBy })
   };
 }
 
-function validateIsoTimestamp(value: string, field: string): void {
-  if (Number.isNaN(Date.parse(value)) || new Date(value).toISOString() !== value) {
+function canonicalIsoTimestamp(value: string, field: string): string {
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) {
     throw new BrainStorageCorruptionError(`Brain source metadata ${field} is malformed`);
   }
+  return new Date(timestamp).toISOString();
 }
 
 export function parseBrainArtifactDetails(value: unknown): BrainArtifactDetails {

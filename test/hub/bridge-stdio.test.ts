@@ -83,6 +83,36 @@ test("stdio bridge forwards stable skill reader calls as one protocol response",
   });
 });
 
+test("stdio bridge accepts MCP request metadata on tool calls", async () => {
+  const input = new PassThrough();
+  const stdout = outputCollector();
+  const calls: unknown[] = [];
+  const running = runBridgeStdio({
+    input,
+    output: stdout.stream,
+    remote: {
+      call: async (call) => {
+        calls.push(call);
+        return { content: [{ type: "text", text: "[]" }], structuredContent: [] };
+      }
+    }
+  });
+  input.end(`${JSON.stringify({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: {
+      name: "brain_search",
+      arguments: { query: "scaling laws", limit: 5 },
+      _meta: { progressToken: 2 }
+    }
+  })}\n`);
+  await running;
+  const response = JSON.parse(stdout.read().trim()) as { error?: { code: number } };
+  assert.equal(response.error, undefined);
+  assert.deepEqual(calls, [{ name: "brain_search", arguments: { query: "scaling laws", limit: 5 } }]);
+});
+
 test("notifications produce no response and initialize performs sync only once", async () => {
   let syncCount = 0;
   const sync: BridgeSyncPort = { syncOnce: async () => { syncCount += 1; } };
@@ -99,10 +129,17 @@ test("strict JSON-RPC request and params validation returns standard errors", as
   const server = createBridgeServer({ remote: remote() });
   const invalidId = await server.handle({ jsonrpc: "2.0", id: 1.5, method: "ping", params: {} });
   const invalidParams = await server.handle({ jsonrpc: "2.0", id: 2, method: "tools/list", params: { extra: true } });
-  const invalidVersion = await server.handle({ jsonrpc: "1.0", id: 3, method: "ping" });
+  const metadataParams = await server.handle({
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/list",
+    params: { _meta: { progressToken: "list-3" } }
+  });
+  const invalidVersion = await server.handle({ jsonrpc: "1.0", id: 4, method: "ping" });
 
   assert.equal(invalidId?.error?.code, -32600);
   assert.equal(invalidParams?.error?.code, -32602);
+  assert.equal(metadataParams?.error, undefined);
   assert.equal(invalidVersion?.error?.code, -32600);
 });
 

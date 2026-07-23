@@ -96,14 +96,19 @@ test("dispatches MCP brain tools with equivalent structured results", async () =
       provenance: { source: "mcp-test" },
       source: {
         sourceId: "source:mcp-test",
-        capturedAt: new Date(0).toISOString(),
+        capturedAt: "1970-01-01T00:00:00Z",
+        fetchedAt: "1970-01-01T07:00:00+07:00",
         contentHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       },
       sensitivity: "tailnet"
     } }, auth);
     assert.equal(capture.isError, undefined);
-    const artifact = (capture.structuredContent as { artifact: { id: string; createdBy: string } }).artifact;
+    const artifact = (capture.structuredContent as {
+      artifact: { id: string; createdBy: string; source?: { capturedAt: string; fetchedAt?: string } };
+    }).artifact;
     assert.equal(artifact.createdBy, auth.principal.actorId);
+    assert.equal(artifact.source?.capturedAt, "1970-01-01T00:00:00.000Z");
+    assert.equal(artifact.source?.fetchedAt, "1970-01-01T00:00:00.000Z");
 
     const read = await dispatch({ name: "brain_read", arguments: { artifactId: artifact.id } }, auth);
     assert.equal((read.structuredContent as { content: string }).content, "One source for every agent.");

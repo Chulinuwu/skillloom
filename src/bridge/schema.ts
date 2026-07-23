@@ -57,11 +57,11 @@ export function parseInitializeParams(value: unknown): BridgeInitializeParams {
 
 export function parseEmptyParams(value: unknown): void {
   if (value === undefined) return;
-  strictParams(value, []);
+  strictParams(value, ["_meta"]);
 }
 
 export function parseToolCallParams(value: unknown): BridgeToolCallParams {
-  const input = strictParams(value, ["name", "arguments"]);
+  const input = strictParams(value, ["name", "arguments", "_meta"]);
   if (!isToolName(input.name) || !isRecord(input.arguments)) {
     throw new BridgeProtocolError(-32602, "Invalid tools/call params");
   }

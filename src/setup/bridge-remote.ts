@@ -97,7 +97,7 @@ async function dispatchRegistry(api: RegistryMutationApi & RegistryReadApi, call
 function toolResult(value: unknown) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(value) }],
-    structuredContent: value
+    structuredContent: Array.isArray(value) ? { results: value } : value
   };
 }
 
