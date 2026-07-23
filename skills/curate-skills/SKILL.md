@@ -6,6 +6,7 @@ description: Inspect and improve Skillloom-managed Agent Skills with base-hash p
 # Curate Skills
 
 Improve a managed skill from observed evidence while preserving its provenance and the user's ability to reject or reverse the change.
+Respond in the language of the user's latest message. Keep exact identifiers, hashes, paths, and source titles unchanged.
 
 ## Workflow
 

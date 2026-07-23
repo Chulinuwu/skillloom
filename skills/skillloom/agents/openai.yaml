@@ -1,0 +1,4 @@
+interface:
+  display_name: "Skillloom"
+  short_description: "Talk with your private second brain"
+  default_prompt: "Use $skillloom to understand this, connect it to my knowledge, and ask before saving it."

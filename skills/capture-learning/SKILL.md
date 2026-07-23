@@ -6,6 +6,7 @@ description: Capture a reusable workflow as a Skillloom-managed Agent Skill cand
 # Capture Learning
 
 Turn verified task evidence into one focused, harness-neutral Agent Skill candidate. Treat drafting and promotion as separate decisions.
+Respond in the language of the user's latest message. Keep exact identifiers, hashes, paths, and source titles unchanged.
 
 ## Workflow
 
