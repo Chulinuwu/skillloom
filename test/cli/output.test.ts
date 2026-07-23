@@ -6,7 +6,7 @@ import { modeProfileFor } from "../../src/config/mode-profile.js";
 test("human mode output exposes the resolved automation profile", () => {
   const output = formatOutput({ mode: "hermes", policy: {}, automation: modeProfileFor("hermes") }, false);
   assert.match(output, /^mode: hermes$/mu);
-  assert.match(output, /^automation: review=task-end brain=auto-curated retrieval=auto-bounded promotion=policy hosts=claude:automatic,codex:invoked,agents:invoked$/mu);
+  assert.match(output, /^automation: review=meaningful-delta brain=auto-curated retrieval=auto-bounded context=automatic promotion=policy hosts=claude:automatic,codex:invoked,agents:invoked$/mu);
 });
 
 test("human status output exposes the resolved automation profile", () => {
@@ -21,7 +21,7 @@ test("human status output exposes the resolved automation profile", () => {
     lock: { state: "unlocked" }
   }, false);
   assert.match(output, /^mode: manual$/mu);
-  assert.match(output, /^automation: review=manual brain=manual retrieval=explicit promotion=manual hosts=claude:invoked,codex:invoked,agents:invoked$/mu);
+  assert.match(output, /^automation: review=manual brain=manual retrieval=explicit context=automatic promotion=manual hosts=claude:invoked,codex:invoked,agents:invoked$/mu);
 });
 
 test("setup output prints source-bound evidence and redacts secret snippets", () => {

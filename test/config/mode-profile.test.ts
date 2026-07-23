@@ -7,9 +7,9 @@ import { readSkillloomMode } from "../../hooks/config.mjs";
 import { tempDir } from "../helpers/fixtures.js";
 
 const expected = {
-  manual: { reviewTrigger: "manual", brainCapture: "manual", retrieval: "explicit", promotion: "manual" },
-  policy: { reviewTrigger: "manual", brainCapture: "manual", retrieval: "explicit", promotion: "policy" },
-  hermes: { reviewTrigger: "task-end", brainCapture: "auto-curated", retrieval: "auto-bounded", promotion: "policy" }
+  manual: { reviewTrigger: "manual", brainCapture: "manual", retrieval: "explicit", contextRefresh: "automatic", promotion: "manual" },
+  policy: { reviewTrigger: "manual", brainCapture: "manual", retrieval: "explicit", contextRefresh: "automatic", promotion: "policy" },
+  hermes: { reviewTrigger: "meaningful-delta", brainCapture: "auto-curated", retrieval: "auto-bounded", contextRefresh: "automatic", promotion: "policy" }
 } as const;
 
 for (const mode of ["manual", "policy", "hermes"] as const) {
@@ -19,6 +19,7 @@ for (const mode of ["manual", "policy", "hermes"] as const) {
       reviewTrigger: profile.reviewTrigger,
       brainCapture: profile.brainCapture,
       retrieval: profile.retrieval,
+      contextRefresh: profile.contextRefresh,
       promotion: profile.promotion
     }, expected[mode]);
     assert.equal(profile.hostLifecycle.codex, "invoked");

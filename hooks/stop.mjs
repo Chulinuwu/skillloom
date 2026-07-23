@@ -1,27 +1,62 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { countToolCalls } from "./transcript.mjs";
 import { readSkillloomMode } from "./config.mjs";
+import {
+  evaluateContextFreshness,
+  issueContextCapsule,
+  markLearningReviewed,
+  readContextState
+} from "./context-state.mjs";
+import { isMeaningfulLearningDelta } from "./context-policy.mjs";
+import { readHookInput } from "./input.mjs";
+import { contextRefreshReason, learningReviewReason } from "./messages.mjs";
+import { analyzeTranscript, countToolCalls } from "./transcript.mjs";
 
-const input = await readInput();
-const root = input && typeof input.cwd === "string" ? input.cwd : process.cwd();
-const config = input ? await readSkillloomMode(root) : null;
-if (input && config?.mode === "hermes" && input.stop_hook_active !== true) {
-  const counted = typeof input.tool_count === "number" ? input.tool_count : await countToolCalls(input.transcript_path);
-  if (counted === null || counted >= config.minToolCalls) {
-    await checkpointEpisode(root, input, counted).catch(() => undefined);
-    process.stdout.write(`${JSON.stringify({
-      decision: "block",
-      reason: "Skillloom Hermes automatic curation is due. A bounded local episode has been queued for background consolidation. Use $autonomous-learning now and choose exactly one bounded outcome: no-op, memory, skill-create, or skill-patch. A memory outcome searches before writing, performs at most one authenticated brain_capture, brain_update, or brain_link mutation, then records skillloom observe --outcome memory. If the Hub is unavailable, record only the local observation and do not claim a central write succeeded. Reusable procedures still require capture, validation, and skillloom promote --policy; rejected candidates stay quarantined. Never persist transcripts or credentials."
-    })}\n`);
-  }
+const input = await readHookInput();
+if (input && input.stop_hook_active !== true) {
+  await handleStop(input).catch(() => undefined);
 }
 
-async function checkpointEpisode(root, input, counted) {
+async function handleStop(input) {
+  const root = typeof input.cwd === "string" ? input.cwd : process.cwd();
+  const sessionId = typeof input.session_id === "string" ? input.session_id : "claude-default";
+  const config = await readSkillloomMode(root);
+  const counted = Number.isInteger(input.tool_count) && input.tool_count >= 0
+    ? input.tool_count
+    : await countToolCalls(input.transcript_path);
+  const state = await readContextState(root, sessionId);
+  const health = evaluateContextFreshness(state, {
+    mode: config.mode,
+    toolCount: counted,
+    now: Date.now()
+  });
+  if (!health.fresh) {
+    const capsule = await issueContextCapsule(root, {
+      sessionId,
+      mode: config.mode,
+      source: "stop-refresh",
+      toolCount: counted
+    });
+    block(contextRefreshReason(health, capsule, config.mode));
+    return;
+  }
+  if (config.mode !== "hermes") return;
+  const analysis = await analyzeTranscript(input.transcript_path, state.reviewedTranscriptBytes);
+  if (!analysis || !isMeaningfulLearningDelta(analysis, config.minToolCalls, state.lastReviewedAt)) return;
+  await checkpointEpisode(root, input, state, analysis);
+  await markLearningReviewed(root, sessionId, state, analysis.fileSize);
+  block(learningReviewReason());
+}
+
+function block(reason) {
+  process.stdout.write(`${JSON.stringify({ decision: "block", reason })}\n`);
+}
+
+async function checkpointEpisode(root, input, state, analysis) {
   const now = new Date().toISOString();
   const source = typeof input.session_id === "string" ? input.session_id : "claude-stop";
-  const episodeHash = hashText(`${root}:${source}:${counted ?? "unknown"}`);
+  const episodeHash = hashText(`${root}:${source}:${state.epoch}:${state.reviewedTranscriptBytes}:${analysis.fileSize}`);
   const eventId = `learn-stop-${episodeHash.slice(7, 19)}`;
   const jobId = `consolidate-stop-${episodeHash.slice(7, 19)}`;
   const learningRoot = join(root, ".skillloom", "learning");
@@ -36,7 +71,7 @@ async function checkpointEpisode(root, input, counted) {
     startedAt: now,
     endedAt: now,
     evidence: [{
-      summary: counted === null ? "Hermes Stop cadence met with unavailable bounded tool count" : `Hermes Stop cadence met after ${counted} tool calls`,
+      summary: `Hermes meaningful delta: ${analysis.toolCalls} tools, ${analysis.mutations} mutations, ${analysis.research} research, ${analysis.verifications} verification, ${analysis.correctionSignals} corrections`,
       category: "unknown",
       provenanceHash: episodeHash
     }],
@@ -48,7 +83,7 @@ async function checkpointEpisode(root, input, counted) {
     createdAt: now,
     source: "claude",
     outcome: "no-op",
-    summary: "Hermes Stop queued bounded episode for background consolidation",
+    summary: "Hermes queued a meaningful durable delta for bounded consolidation",
     episode
   });
   await writeJsonIfAbsent(join(jobs, `${jobId}.json`), {
@@ -70,20 +105,4 @@ async function writeJsonIfAbsent(path, value) {
 
 function hashText(value) {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
-}
-
-async function readInput() {
-  let source = "";
-  for await (const chunk of process.stdin) {
-    source += chunk;
-    if (source.length > 1024 * 1024) {
-      return null;
-    }
-  }
-  try {
-    const value = JSON.parse(source || "{}");
-    return typeof value === "object" && value !== null ? value : {};
-  } catch {
-    return null;
-  }
 }

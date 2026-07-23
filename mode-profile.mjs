@@ -5,6 +5,7 @@ const MODE_PROFILES = Object.freeze({
     reviewTrigger: "manual",
     brainCapture: "manual",
     retrieval: "explicit",
+    contextRefresh: "automatic",
     promotion: "manual",
     hostLifecycle: INVOKED_HOSTS
   }),
@@ -12,13 +13,15 @@ const MODE_PROFILES = Object.freeze({
     reviewTrigger: "manual",
     brainCapture: "manual",
     retrieval: "explicit",
+    contextRefresh: "automatic",
     promotion: "policy",
     hostLifecycle: INVOKED_HOSTS
   }),
   hermes: Object.freeze({
-    reviewTrigger: "task-end",
+    reviewTrigger: "meaningful-delta",
     brainCapture: "auto-curated",
     retrieval: "auto-bounded",
+    contextRefresh: "automatic",
     promotion: "policy",
     hostLifecycle: Object.freeze({ claude: "automatic", codex: "invoked", agents: "invoked" })
   })

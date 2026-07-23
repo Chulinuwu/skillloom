@@ -1,4 +1,4 @@
 interface:
   display_name: "Autonomous Learning"
-  short_description: "Review completed work for reusable skills"
-  default_prompt: "Use $autonomous-learning to review this completed task and safely preserve reusable skill knowledge."
+  short_description: "Review durable work after a meaningful delta"
+  default_prompt: "Use $autonomous-learning to review this completed task for a durable delta and safely preserve one bounded outcome."

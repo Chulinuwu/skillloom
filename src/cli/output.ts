@@ -128,13 +128,14 @@ function isStatus(value: unknown): value is {
 }
 
 function isModeProfile(value: unknown): value is ModeProfile {
-  if (typeof value !== "object" || value === null || !("reviewTrigger" in value) || !("brainCapture" in value) || !("retrieval" in value) || !("promotion" in value) || !("hostLifecycle" in value)) {
+  if (typeof value !== "object" || value === null || !("reviewTrigger" in value) || !("brainCapture" in value) || !("retrieval" in value) || !("contextRefresh" in value) || !("promotion" in value) || !("hostLifecycle" in value)) {
     return false;
   }
   const hosts = value.hostLifecycle;
-  return (value.reviewTrigger === "manual" || value.reviewTrigger === "task-end")
+  return (value.reviewTrigger === "manual" || value.reviewTrigger === "meaningful-delta")
     && (value.brainCapture === "manual" || value.brainCapture === "auto-curated")
     && (value.retrieval === "explicit" || value.retrieval === "auto-bounded")
+    && value.contextRefresh === "automatic"
     && (value.promotion === "manual" || value.promotion === "policy")
     && typeof hosts === "object"
     && hosts !== null
@@ -148,7 +149,7 @@ function isModeProfile(value: unknown): value is ModeProfile {
 
 function formatAutomation(profile: ModeProfile): string {
   const hosts = Object.entries(profile.hostLifecycle).map(([host, lifecycle]) => `${host}:${lifecycle}`).join(",");
-  return `automation: review=${profile.reviewTrigger} brain=${profile.brainCapture} retrieval=${profile.retrieval} promotion=${profile.promotion} hosts=${hosts}`;
+  return `automation: review=${profile.reviewTrigger} brain=${profile.brainCapture} retrieval=${profile.retrieval} context=${profile.contextRefresh} promotion=${profile.promotion} hosts=${hosts}`;
 }
 function isPromotion(value: unknown): value is { promotionId: string; result: string; targets: unknown[] } {
   return typeof value === "object" && value !== null && "promotionId" in value && "targets" in value;
