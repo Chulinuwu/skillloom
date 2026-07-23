@@ -1,10 +1,12 @@
 # Skillloom
 
-![Skillloom weaving a private second brain and portable Agent Skills](assets/skillloom-hero.webp)
+![Skillloom weaving portable agent state and governed Agent Skills](assets/skillloom-hero.webp)
 
-Your agents stop relearning the same work, without letting remembered content silently become executable instructions.
+Your agents should not start from zero on every machine.
 
-Skillloom is a private second brain shared by Claude Code, Codex, and the machines in your Tailnet. Agents can reuse notes, sources, decisions, memories, and verified workflows. Knowledge stays data until proof, validation, policy, and promotion turn a procedure into an Agent Skill.
+Keep the agents you already use. Skillloom gives them one private, self-hosted state layer across your machines. Knowledge follows you, new machines join the same Brain, and only proven workflows can become portable Agent Skills.
+
+Memory stays data. Only verified workflows become executable behavior.
 
 [![npm version](https://img.shields.io/npm/v/%40chulinxz%2Fskillloom.svg)](https://www.npmjs.com/package/@chulinxz/skillloom)
 [![CI](https://github.com/Chulinuwu/skillloom/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Chulinuwu/skillloom/actions/workflows/ci.yml)
@@ -34,9 +36,11 @@ Some vendor-controlled steps still require a person. Skillloom fetches the curre
 
 ## The problem it solves
 
-An agent solves a difficult problem on one machine. A week later, another agent meets the same problem elsewhere and starts from zero. The answer existed, but it was trapped in a session log.
+Every agent and machine tends to become its own island. Knowledge remains in session history, skills live in host-specific directories, and a new machine means copying files, rebuilding integrations, and teaching the same context again.
 
-Skillloom makes the useful outcome durable. Agents write bounded Brain records through authenticated tools. People browse knowledge and stage notes in a hosted Obsidian Web UI. A workflow that proves reusable can become an immutable candidate, pass validation and policy, and install transactionally in supported agent hosts.
+Skillloom separates durable state from the agent that produced it. The Brain holds notes, sources, decisions, memories, and workflow evidence. Supported hosts retrieve that state through authenticated interfaces and reconcile approved skill releases into their own local destinations.
+
+A memory system can preserve what happened. A package manager can install what was already declared. Skillloom focuses on the governed transition between them: deciding what is worth keeping and when a proven procedure is allowed to become executable behavior.
 
 The trust boundary is the product:
 
@@ -52,7 +56,11 @@ observation
 
 A note can contain hostile or mistaken instructions and still remain data. It does not become an executable skill merely because an agent remembered it.
 
-## What is stored where
+Skillloom standardizes what follows you between agents, not which agent you must use.
+
+## What follows you
+
+The shared Hub holds canonical durable state. Each machine keeps only the local control state needed to reconcile safely.
 
 | Layer | Stores | Trust boundary |
 | --- | --- | --- |
@@ -66,7 +74,7 @@ Every machine keeps local policy, pending operations, backups, installed targets
 
 ## Talk to it normally
 
-Obsidian is the human view, not a command console. The normal interface is conversation:
+Obsidian is a human-readable view of the Brain, not the product or a command console. The normal interface is conversation:
 
 - Paste a paper and ask what it changes for the current design.
 - Paste a news link and ask for a summary, links to prior knowledge, and whether it is worth keeping.
@@ -100,7 +108,7 @@ Claude Code can run compatible lifecycle hooks automatically. Codex and other ho
 
 | Role | Use it when | Result |
 | --- | --- | --- |
-| Main Hub | This machine hosts the shared second brain | Loopback-only Docker stack, private Tailscale Serve, Hub and Obsidian links |
+| Main Hub | This machine hosts the shared Brain and skill registry | Loopback-only Docker stack, private Tailscale Serve, Hub and Obsidian links |
 | Client Node | This machine joins an existing Hub | Hub trust verification, Brain access check, release reconciliation, local integrations |
 | This Machine Only | Nothing should be shared | Local integrations and local state only |
 
@@ -132,6 +140,12 @@ Accepted captures and updates pass through BrainService. Direct edits to `Librar
 
 Obsidian authoring cannot publish or promote a skill.
 
+## From personal setup to shared practice
+
+Skillloom is built first for people who use multiple agents across multiple machines. A trusted team can also connect authenticated clients to one private Hub and share durable knowledge and approved workflows without requiring everyone to standardize on one agent vendor.
+
+The current baseline assumes one owned deployment inside one Tailnet. Organization-wide identity, role-based administration, multi-tenant isolation, retention policy, centralized administration, and fleet-wide enforcement are future work, not current guarantees.
+
 ## Supported today
 
 | Capability | Status | Current boundary |
@@ -142,7 +156,8 @@ Obsidian authoring cannot publish or promote a skill.
 | Shared agent knowledge | Supported baseline | Authenticated MCP or HTTP |
 | Obsidian browsing and authoring | Supported baseline | Governed Markdown records, synthetic filesystem actor |
 | Claude Code lifecycle hooks | Supported baseline | Automatic where the host exposes compatible hooks |
-| Codex and portable agent hosts | Supported baseline | Brain and skills work; unsupported lifecycle moments are invoked |
+| First-class plugin setup | Supported baseline | Claude Code and Codex |
+| Portable host boundary | Supported baseline | MCP, HTTP, and Agent Skills adapters; lifecycle automation varies by host |
 | Retrieval | Supported baseline | FTS5/BM25 plus graph expansion; no semantic or cross-language guarantee |
 | Workflow-to-skill promotion | Supported baseline | Proof, validation, policy, signed release, recovery, rollback |
 | Multiple active Hub writers | Not supported | Requires storage ownership and leadership semantics |
@@ -173,11 +188,11 @@ Results are machine-specific. The current benchmark describes lexical retrieval 
 
 ## How it differs from adjacent tools
 
-`claude-mem` focuses on automatic session memory and context continuity. Skillloom focuses on curated shared knowledge and the governed boundary from remembered procedure to executable skill.
+Memory systems preserve context. Skill managers distribute declared capabilities. Configuration tools translate files across hosts. Stateful agent runtimes carry their own agents across environments.
 
-`claude-obsidian` demonstrates the value of a plain Markdown second brain and compounding wiki workflows. Skillloom keeps that human-readable shape while routing accepted agent and Obsidian writes through revisions, provenance, authorization, and audit.
+Skillloom does not replace the agent runtime you already use. It focuses on one private state layer shared by supported external hosts, with a strict boundary between durable knowledge and executable skills. A procedure must accumulate evidence and pass validation, policy, signing, and transactional promotion before it can change agent behavior.
 
-These tools are adjacent, not drop-in replacements. Skillloom does not yet claim tested co-installation or automatic whole-vault organization. See [comparisons and design influences](docs/comparisons.md).
+The individual ideas are not unique, and adjacent projects overlap strongly. Skillloom does not claim complete compatibility with every host, tested co-installation with every memory tool, or automatic whole-vault organization. See [comparisons and design influences](docs/comparisons.md) for the detailed boundaries.
 
 ## Security promises
 
