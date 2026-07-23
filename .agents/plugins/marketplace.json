@@ -8,8 +8,8 @@
     {
       "name": "skillloom",
       "source": {
-        "source": "url",
-        "url": "./"
+        "source": "local",
+        "path": "."
       },
       "description": "Private second brain for human knowledge, agent memories, workflows, and governed portable Agent Skills.",
       "policy": {

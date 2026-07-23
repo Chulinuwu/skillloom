@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "skillloom": {
+      "command": "node",
+      "args": [
+        "plugin-runtime/skillloom.mjs",
+        "bridge",
+        "--stdio"
+      ],
+      "cwd": "."
+    }
+  }
+}

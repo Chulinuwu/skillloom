@@ -46,12 +46,12 @@ export function createBridgeServer(options: BridgeServerOptions): BridgeServer {
       const params = parseInitializeParams(request.params);
       if (!syncStarted) {
         syncStarted = true;
-        await attemptSync(options);
+        void attemptSync(options);
       }
       return success(id, {
         protocolVersion: params.protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "skillloom-bridge", version: "0.3.0" }
+        serverInfo: { name: "skillloom-bridge", version: "0.3.4" }
       });
     }
     if (request.method === "ping") {

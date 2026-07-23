@@ -35,8 +35,13 @@ export function parseJsonRpcRequest(value: unknown): JsonRpcRequest {
 }
 
 export function parseInitializeParams(value: unknown): BridgeInitializeParams {
-  const input = strictParams(value, ["protocolVersion", "capabilities", "clientInfo"]);
-  const clientInfo = strictObject(input.clientInfo, ["name", "version"], -32602, "Invalid initialize params");
+  const input = strictParams(value, ["protocolVersion", "capabilities", "clientInfo", "_meta"]);
+  const clientInfo = strictObject(
+    input.clientInfo,
+    ["name", "version", "title", "description", "websiteUrl", "icons"],
+    -32602,
+    "Invalid initialize params"
+  );
   if (typeof input.protocolVersion !== "string" || input.protocolVersion.length === 0
     || !isRecord(input.capabilities)
     || typeof clientInfo.name !== "string" || clientInfo.name.length === 0

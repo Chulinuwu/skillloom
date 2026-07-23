@@ -29,7 +29,7 @@ test("stdio bridge handles partial and multiple newline-delimited messages", asy
   const running = runBridgeStdio({ input, output: stdout.stream, diagnostics: stderr.stream, remote: remote(), sync });
 
   input.write('{"jsonrpc":"2.0","id":1,"method":"init');
-  input.write('ialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}\n');
+  input.write('ialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1","title":"Test Client"},"_meta":{}}}\n');
   input.end('{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n{"jsonrpc":"2.0","id":"p","method":"ping","params":{}}\n');
   await running;
 
@@ -119,13 +119,23 @@ test("invalid objects receive an Invalid Request response", async () => {
 
 test("initial sync is bounded and its failure stays off protocol output", async () => {
   let aborted = false;
+  let resolveDiagnosis!: () => void;
+  const diagnosis = new Promise<void>((resolve) => { resolveDiagnosis = resolve; });
   const sync: BridgeSyncPort = {
     syncOnce: (signal) => new Promise((_resolve, reject) => {
       signal.addEventListener("abort", () => { aborted = true; reject(new Error("aborted")); }, { once: true });
     })
   };
   const diagnostics: string[] = [];
-  const server = createBridgeServer({ remote: remote(), sync, syncTimeoutMs: 5, diagnose: (line) => diagnostics.push(line) });
+  const server = createBridgeServer({
+    remote: remote(),
+    sync,
+    syncTimeoutMs: 5,
+    diagnose: (line) => {
+      diagnostics.push(line);
+      resolveDiagnosis();
+    }
+  });
   const response = await server.handle({
     jsonrpc: "2.0",
     id: 1,
@@ -134,6 +144,25 @@ test("initial sync is bounded and its failure stays off protocol output", async 
   });
 
   assert.equal(response?.error, undefined);
+  await diagnosis;
   assert.equal(aborted, true);
   assert.match(diagnostics[0] ?? "", /Initial sync failed/);
+});
+
+test("initialize returns before background sync finishes", async () => {
+  let releaseSync!: () => void;
+  const sync: BridgeSyncPort = {
+    syncOnce: () => new Promise<void>((resolve) => { releaseSync = resolve; })
+  };
+  const server = createBridgeServer({ remote: remote(), sync });
+
+  const response = await server.handle({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } }
+  });
+
+  assert.equal(response?.error, undefined);
+  releaseSync();
 });

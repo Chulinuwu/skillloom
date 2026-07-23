@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { access, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { access, copyFile, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -19,8 +19,13 @@ test("repository plugin validator passes", async () => {
 test("SessionStart emits a safe static context when skill metadata is unavailable", async () => {
   const missingRoot = await mkdtemp(join(tmpdir(), "skillloom-hook-missing-"));
   try {
-    const { stdout, stderr } = await execute(process.execPath, [join(root, "hooks/session-start.mjs")], {
-      env: { ...process.env, CLAUDE_PLUGIN_ROOT: missingRoot }
+    const { stdout, stderr } = await executeHook("session-start.mjs", {
+      cwd: missingRoot,
+      session_id: "missing-metadata",
+      source: "startup"
+    }, {
+      ...process.env,
+      CLAUDE_PLUGIN_ROOT: missingRoot
     });
     const output = JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } };
     assert.equal(stderr, "");
@@ -35,10 +40,11 @@ test("SessionStart emits bounded automatic recall context for Hermes", async () 
   try {
     await mkdir(join(project, ".skillloom"));
     await writeFile(join(project, ".skillloom", "config.json"), JSON.stringify({ mode: "hermes", hermes: { minToolCalls: 3 } }));
-    const { stdout, stderr } = await execute(process.execPath, [join(root, "hooks/session-start.mjs")], {
+    const { stdout, stderr } = await executeHook("session-start.mjs", {
       cwd: project,
-      env: { ...process.env, CLAUDE_PLUGIN_ROOT: root }
-    });
+      session_id: "packaging-hermes",
+      source: "startup"
+    }, { ...process.env, CLAUDE_PLUGIN_ROOT: root });
     const output = JSON.parse(stdout) as { hookSpecificOutput: { additionalContext: string } };
     const context = output.hookSpecificOutput.additionalContext;
     assert.equal(stderr, "");
@@ -62,8 +68,10 @@ test("npm package contains the CLI and all portable skills", async () => {
   for (const path of [
     ".claude-plugin/plugin.json",
     ".codex-plugin/plugin.json",
-    ".mcp.json",
+    "claude.mcp.json",
+    "codex.mcp.json",
     "dist/cli/main.js",
+    "plugin-runtime/skillloom.mjs",
     "hub/.env.example",
     "hub/Dockerfile",
     "hub/README.md",
@@ -79,6 +87,8 @@ test("npm package contains the CLI and all portable skills", async () => {
     "skills/capture-learning/agents/openai.yaml",
     "skills/curate-skills/SKILL.md",
     "skills/curate-skills/agents/openai.yaml",
+    "skills/skillloom/SKILL.md",
+    "skills/skillloom/agents/openai.yaml",
     "skills/setup-skillloom/SKILL.md",
     "skills/setup-skillloom/agents/openai.yaml",
     "skills/setup-skillloom/scripts/skillloom.mjs",
@@ -89,6 +99,25 @@ test("npm package contains the CLI and all portable skills", async () => {
   }
   assert.equal([...paths].some((path) => /(?:token|secret|credential|vault|database)\.(?:json|env)$/iu.test(path)), false);
   assert.equal([...paths].some((path) => path.startsWith("src/") || path.startsWith("test/")), false);
+});
+
+test("Git marketplace setup runner starts without the ignored dist directory", async () => {
+  const snapshot = await mkdtemp(join(tmpdir(), "skillloom-marketplace-test-"));
+  const runner = join(snapshot, "skills/setup-skillloom/scripts/skillloom.mjs");
+  const runtime = join(snapshot, "plugin-runtime/skillloom.mjs");
+  const workspace = join(snapshot, "workspace");
+  try {
+    await mkdir(dirname(runner), { recursive: true });
+    await mkdir(dirname(runtime), { recursive: true });
+    await mkdir(workspace);
+    await copyFile(join(root, "skills/setup-skillloom/scripts/skillloom.mjs"), runner);
+    await copyFile(join(root, "plugin-runtime/skillloom.mjs"), runtime);
+    const { stdout, stderr } = await execute(process.execPath, [runner, "status", "--json"], { cwd: workspace });
+    assert.equal(stderr, "");
+    assert.equal((JSON.parse(stdout) as { mode: string }).mode, "manual");
+  } finally {
+    await rm(snapshot, { recursive: true, force: true });
+  }
 });
 
 test("npm package excludes runtime environment files and retains the Hub template", async () => {
@@ -128,3 +157,16 @@ test("CLI starts when invoked through an npm-style bin symlink", async () => {
     await rm(temporary, { recursive: true, force: true });
   }
 });
+
+async function executeHook(script: string, input: object, env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> {
+  return await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [join(root, "hooks", script)], { env });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.once("error", reject);
+    child.once("close", (code) => code === 0 ? resolve({ stdout, stderr }) : reject(new Error(stderr || `exit ${code}`)));
+    child.stdin.end(JSON.stringify(input));
+  });
+}

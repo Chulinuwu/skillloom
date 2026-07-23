@@ -8,7 +8,7 @@
     {
       "name": "skillloom",
       "description": "Private second brain for human knowledge, agent memories, workflows, and governed portable Agent Skills.",
-      "version": "0.3.0",
+      "version": "0.3.4",
       "source": "./",
       "author": {
         "name": "Chulinuwu"

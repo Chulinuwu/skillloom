@@ -1,6 +1,6 @@
 {
   "name": "skillloom",
-  "version": "0.3.0",
+  "version": "0.3.4",
   "description": "Private second brain for human knowledge, agent memories, workflows, and governed portable Agent Skills.",
   "author": {
     "name": "Chulinuwu",
@@ -21,11 +21,11 @@
     "self-learning"
   ],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
+  "mcpServers": "./codex.mcp.json",
   "interface": {
     "displayName": "Skillloom",
     "shortDescription": "Private second brain and governed Agent Skills",
-    "longDescription": "Connect Claude Code, Codex, and Tailnet machines to a shared Skillloom Brain for human knowledge, agent memories, workflows, read-only Obsidian browsing, and policy-gated skill promotion.",
+    "longDescription": "Connect Claude Code, Codex, and Tailnet machines to a shared Skillloom Brain for human knowledge, agent memories, workflows, governed Obsidian authoring, and policy-gated skill promotion.",
     "developerName": "Chulinuwu",
     "category": "Developer Tools",
     "capabilities": [
@@ -34,10 +34,9 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Use $setup-skillloom to host or connect the private second brain.",
-      "Use $capture-learning to preserve this reusable workflow safely.",
-      "Use $curate-skills to review a managed skill before changing it.",
-      "Codex lifecycle review is invoked: use $autonomous-learning after non-trivial work."
+      "Use $skillloom to understand, connect, and save anything through your private second brain.",
+      "Use $setup-skillloom to host or connect the private second brain and learn how to use it.",
+      "Codex lifecycle review is invoked: use $autonomous-learning, $capture-learning, then $curate-skills."
     ],
     "websiteURL": "https://github.com/Chulinuwu/skillloom"
   }

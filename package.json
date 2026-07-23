@@ -1,6 +1,6 @@
 {
   "name": "@chulinxz/skillloom",
-  "version": "0.3.0",
+  "version": "0.3.4",
   "description": "Private second brain for human knowledge, agent memories, workflows, and governed portable Agent Skills",
   "type": "module",
   "license": "MIT",
@@ -32,7 +32,8 @@
     ".agents/plugins",
     ".claude-plugin",
     ".codex-plugin",
-    ".mcp.json",
+    "claude.mcp.json",
+    "codex.mcp.json",
     "assets",
     "dist",
     "hub/Dockerfile",
@@ -44,12 +45,14 @@
     "hooks",
     "mode-profile.d.mts",
     "mode-profile.mjs",
+    "plugin-runtime",
     "skills",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && npm run build:plugin-runtime",
+    "build:plugin-runtime": "esbuild src/cli/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=plugin-runtime/skillloom.mjs",
     "lint": "eslint .",
     "prepack": "npm run build",
     "pretest": "npm run build",
@@ -59,6 +62,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
+    "esbuild": "^0.28.1",
     "eslint": "^10.7.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",

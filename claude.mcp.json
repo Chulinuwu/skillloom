@@ -3,11 +3,10 @@
     "skillloom": {
       "command": "node",
       "args": [
-        "dist/cli/main.js",
+        "${CLAUDE_PLUGIN_ROOT}/plugin-runtime/skillloom.mjs",
         "bridge",
         "--stdio"
-      ],
-      "cwd": "."
+      ]
     }
   }
 }
