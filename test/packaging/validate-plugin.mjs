@@ -81,7 +81,6 @@ async function validateManifests() {
   invariant(/node:\s*\["22\.16\.0", 24, 26\]/u.test(ci), "CI must test the runtime floor and supported Node.js releases");
   invariant(readme.includes("Node.js 22.16 or newer") && readme.includes("Node.js 22.16, 24, and 26"), "README runtime requirements must match package and CI contracts");
   invariant(readme.includes("## One link is enough") && readme.includes(repository), "README must lead with agent-driven one-link setup");
-  invariant(readme.includes("## See the boundary in three minutes") && readme.includes("npm run demo"), "README must expose the local trust-boundary demo");
   invariant(readme.includes("## Supported today") && readme.includes("## Measure retrieval on your machine"), "README must disclose support status and retrieval evidence");
   invariant(packageJson.scripts?.demo?.includes("dist/cli/main.js demo"), "package scripts must expose the isolated demo");
   invariant(packageJson.scripts?.["benchmark:retrieval"]?.includes("benchmark retrieval"), "package scripts must expose the retrieval benchmark");

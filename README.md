@@ -32,30 +32,6 @@ If you already know the role, include it in the same message:
 
 Some vendor-controlled steps still require a person. Skillloom fetches the current official instructions during every onboarding run, opens the relevant page when possible, guides one screen at a time, checkpoints completed work, and resumes after the approval. It never asks you to paste Tailscale secrets into chat.
 
-## See the boundary in three minutes
-
-After checkout:
-
-```bash
-npm ci
-npm run demo
-```
-
-The demo creates a temporary local Brain and uses the real governance and promotion services. It requires no Docker, Tailscale, Claude Code account, or Codex account.
-
-It proves that:
-
-- Agent B retrieves the workflow captured by Agent A.
-- A workflow without proof remains a draft.
-- Failed replay proof is rejected.
-- `manual` mode blocks policy promotion.
-- `policy` mode promotes a proved workflow.
-- Rollback removes the installed skill and restores the prior state.
-
-The temporary workspace is removed by default. Build once and run `node dist/cli/main.js demo --keep` if you want to inspect it.
-
-![Skillloom capture, validate, and promote demo](assets/demo.webp)
-
 ## The problem it solves
 
 An agent solves a difficult problem on one machine. A week later, another agent meets the same problem elsewhere and starts from zero. The answer existed, but it was trapped in a session log.
