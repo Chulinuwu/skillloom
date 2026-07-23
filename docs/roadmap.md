@@ -1,6 +1,6 @@
-# Skillloom public roadmap
+# Public roadmap and boundaries
 
-This file tracks product boundaries that are intentionally not part of the current supported contract. It is not a release commitment.
+This file tracks product boundaries that are intentionally outside the current supported contract. It is not a release commitment.
 
 ## Implemented baseline
 
@@ -12,17 +12,27 @@ This file tracks product boundaries that are intentionally not part of the curre
 - Governed workflow-to-skill proof, validation, policy, promotion, rollback, and signed stable releases.
 - MCP, HTTP, and local bridge access for Brain and registry operations.
 
-## Open work
+## Evaluation and retrieval work
+
+- Publish reproducible benchmark runs with machine, Node.js, filesystem, corpus, and revision metadata.
+- Add datasets for duplicate rejection, conflicting updates, poisoned-note isolation, crash recovery, agent task time, and context-token overhead.
+- Evaluate hybrid lexical and local semantic retrieval before choosing an embedding dependency.
+- Define reranking, temporal decay, source trust weighting, contradiction handling, entity resolution, duplicate clustering, and multilingual acceptance criteria.
+- Replace full startup rebuild with an incremental path only after crash recovery preserves canonical rebuildability.
+
+## Trust and deployment work
 
 - Per-user attribution for Obsidian authoring through an authenticated API-backed editor or plugin. The filesystem bridge records a synthetic local actor.
 - Review and quarantine registry channels beyond the current stable reader contract.
+- Signing-key rotation, overlap, revocation, client migration, and rollback semantics.
 - Byte-range continuation when package sizes justify partial-download recovery.
 - Operator-run multi-device Tailnet acceptance and recurring backup and restore drills.
 - Hub migration workflows that preserve endpoint trust and signing identity.
-- Multiple Hub backends only after storage ownership and leadership semantics are defined.
+- A standalone or bootstrapped client runtime that reduces the Node.js installation requirement without creating a second unsupported distribution contract.
 
-## Explicitly out of scope for the current contract
+## Explicit non-goals
 
+- Multiple Hub backends before storage ownership and leadership semantics are defined.
 - Cloud agents that cannot reach the user's Tailnet.
 - Peer-to-peer leader election without a designated Hub.
 - Multiple active writers to one Hub data volume.

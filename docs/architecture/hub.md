@@ -1,5 +1,7 @@
 # Skillloom Hub architecture
 
+# Hub architecture
+
 - Status: Implemented baseline
 - Scope: Private second brain and governed Agent Skills across devices in one Tailnet
 
@@ -172,6 +174,19 @@ latestEventSequence
 Additive fields are backward-compatible. Removed or reinterpreted fields require a protocol major version. Clients reject an incompatible Hub major version. Mutations use request IDs and idempotency keys, and downloads verify content hashes.
 
 The current reader and reconciliation path exposes signed `stable` releases only. A client may narrow automatic installation but cannot broaden Hub authorization or local policy.
+
+## Capacity and concurrency
+
+The supported baseline has one designated Hub process that owns one persistent data volume.
+
+- Brain mutations are serialized through one in-process queue. This keeps revision, idempotency, journaling, and projection ordering deterministic.
+- Initialization rebuilds derived search state from canonical Markdown and durable audit data. Startup cost therefore grows with the vault.
+- Multiple Hub processes, multiple active writers to one data volume, horizontal write scaling, and automatic leader election are unsupported.
+- No fixed artifact count, ingestion throughput, concurrent-agent limit, attachment throughput, or startup service-level objective is advertised yet.
+
+Run `npm run benchmark:retrieval -- --records 1000 --iterations 5` to measure the current lexical retrieval path on the target machine. Use an explicit `--workspace` for larger resumable runs. The [benchmark methodology](../benchmarks.md) records what the harness does and does not prove.
+
+## Operations
 
 ## Deployment
 

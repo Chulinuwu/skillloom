@@ -2,6 +2,10 @@
 
 ## Identity and authorization
 
+# Security and recovery
+
+## Network and authorization boundary
+
 Tailscale provides transport identity. Skillloom enforces application authorization.
 
 Tailscale Serve must:
@@ -49,6 +53,18 @@ Effective permission is the intersection of:
 4. Local machine policy.
 
 A client can narrow permissions but cannot broaden them.
+
+## Signing and key lifecycle
+
+The Hub creates one native Ed25519 registry signing key at first startup. The private key is stored as `runtime/registry-signing-key.pem` in the persistent Hub data volume with mode `0600`. The Hub instance ID is created once beside it. Backups and migrations must preserve both values as one trust identity.
+
+During explicit Hub trust, each client pins the Hub instance ID and the SHA-256 fingerprint of the advertised public key. Reconciliation verifies the canonical signed payload, fingerprint, Hub instance ID, monotonic registry sequence, and package hash before materializing a release.
+
+The signature proves that the exact registry payload came from the holder of the pinned private key and was not changed afterward. It does not make the release behavior safe, replace validation or policy, identify the human promoter by itself, or protect against a compromised Hub that can use the signing key.
+
+The current baseline does not rotate or revoke keys automatically. If the Hub identity or key changes, clients stop reconciliation and require explicit re-trust. Deleting the key creates a new trust root and should be treated as a recovery event, not routine maintenance. Planned rotation must define overlap, revocation, client migration, and rollback semantics before implementation.
+
+## Failure behavior
 
 ## Failure recovery
 
