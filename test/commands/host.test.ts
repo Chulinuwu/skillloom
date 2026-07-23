@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { HostService } from "../../src/host/service.js";
+import { prepareHostState } from "../../src/host/state.js";
 import type { ConsentPort, ProcessPort } from "../../src/setup/types.js";
 const packageRoot = process.cwd();
 test("host install uses host Tailscale Serve and reports both Tailnet surfaces", async () => {
@@ -21,9 +22,19 @@ test("host install uses host Tailscale Serve and reports both Tailnet surfaces",
   assert.equal(result.surfaces?.obsidian.internalPort, 3000);
   assert.deepEqual(result.surfaces?.obsidian.workspaces, {
     library: { path: "Library", access: "read-only" },
+    dashboards: { path: "Bases", access: "writable-ui-state" },
     authoring: { path: "Authoring", access: "writable-staging" }
   });
   assert.doesNotMatch(await readFile(join(hostRoot, "host.env"), "utf8"), /TS_AUTHKEY|ignored-secret/u);
+  const obsidianProfile = await readFile(join(hostRoot, "obsidian-config", ".config", "obsidian", "obsidian.json"), "utf8");
+  assert.match(obsidianProfile, /"path":"\/config\/Documents\/Skillloom"/u);
+  assert.match(obsidianProfile, /"open":true/u);
+  assert.equal((await stat(join(hostRoot, "obsidian-config", "vault-config"))).isDirectory(), true);
+  assert.equal((await stat(join(hostRoot, "data", "brain", "projections", "obsidian-vault"))).isDirectory(), true);
+  assert.equal((await stat(join(hostRoot, "data", "brain", "projections", "obsidian-vault", ".obsidian"))).isDirectory(), true);
+  assert.equal((await stat(join(hostRoot, "data", "brain", "projections", "obsidian-vault", "Bases"))).isDirectory(), true);
+  assert.equal((await stat(join(hostRoot, "data", "brain", "projections", "obsidian-vault", "Authoring"))).isDirectory(), true);
+  assert.equal((await stat(join(hostRoot, "data", "brain", "obsidian-ui", "Bases"))).isDirectory(), true);
   const policy = await readFile(join(hostRoot, "policy.hujson"), "utf8");
   assert.match(policy, /src: \["owner@github"\]/u);
   assert.match(policy, /dst: \["autogroup:self"\]/u);
@@ -38,6 +49,24 @@ test("host install uses host Tailscale Serve and reports both Tailnet surfaces",
   assert.ok(calls.some((args) => args.join(" ") === "serve status"));
   assert.equal(calls.some((args) => args.join(" ").includes("funnel")), false);
 });
+
+test("host upgrade pauses Obsidian before migrating persistent workspace state", async () => {
+  const hostRoot = await mkdtemp(join(tmpdir(), "skillloom-host-upgrade-"));
+  await prepareHostState(hostRoot, "{}");
+  const calls: string[][] = [];
+  const service = new HostService(
+    { processes: processPort(calls), consent: consent(), localBackendsHealthy: healthyBackends },
+    { packageRoot, hostRoot, env: {} }
+  );
+
+  await service.install(true);
+
+  const stopIndex = calls.findIndex((args) => args.at(-2) === "stop" && args.at(-1) === "obsidian");
+  const upIndex = calls.findIndex((args) => args.includes("up"));
+  assert.ok(stopIndex >= 0);
+  assert.ok(upIndex > stopIndex);
+});
+
 test("main hub install stops before Docker when host Tailscale is not authenticated", async () => {
   const hostRoot = await mkdtemp(join(tmpdir(), "skillloom-host-no-login-"));
   const calls: string[][] = [];
@@ -173,6 +202,7 @@ function processPort(calls: string[][], fail: "none" | "needs-login" | "missing-
           : { exitCode: 0, stdout: "ready", stderr: "" };
       }
       if (executable.endsWith("open") && args.join(" ") === "-a Docker") return { exitCode: 0, stdout: "", stderr: "" };
+      if (executable.endsWith("docker") && args.includes("stop")) return { exitCode: 0, stdout: "stopped", stderr: "" };
       if (executable.endsWith("docker") && args.includes("up")) return { exitCode: 0, stdout: "started", stderr: "" };
       if (executable.endsWith("docker") && args.includes("down")) return { exitCode: 0, stdout: "removed", stderr: "" };
       if (executable.endsWith("docker") && args.includes("ps")) return { exitCode: 0, stdout: "skillloom-hub\nobsidian\n", stderr: "" };

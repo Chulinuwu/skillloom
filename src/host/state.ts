@@ -1,14 +1,25 @@
 import { access, chmod, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { atomicWriteFile } from "../files/atomic-write.js";
+import { prepareObsidianProfile } from "./obsidian-profile.js";
+import { prepareObsidianWorkspace } from "./obsidian-workspace.js";
 export type HostPaths = ReturnType<typeof hostPaths>;
 export async function prepareHostState(hostRoot: string, policyFragment: string): Promise<HostPaths> {
   const paths = hostPaths(hostRoot);
   await Promise.all([
     secureDirectory(hostRoot),
     secureDirectory(paths.data),
-    secureDirectory(paths.obsidianConfig)
+    secureDirectory(paths.obsidianConfig),
+    secureDirectory(paths.obsidianVaultConfig),
+    secureDirectory(paths.obsidianProjectionRoot),
+    secureDirectory(paths.obsidianVaultConfigMountpoint),
+    secureDirectory(paths.obsidianBasesMountpoint),
+    secureDirectory(paths.obsidianAuthoringMountpoint),
+    secureDirectory(paths.obsidianBases),
+    secureDirectory(paths.obsidianAuthoring)
   ]);
+  await prepareObsidianProfile(paths.obsidianConfig);
+  await prepareObsidianWorkspace(paths.obsidianVaultConfig);
   await atomicWriteFile(paths.envFile, hostEnvironment(paths), { mode: 0o600 });
   await atomicWriteFile(paths.policy, policyFragment, { mode: 0o600 });
   return paths;
@@ -27,6 +38,13 @@ export function hostPaths(hostRoot: string) {
     root: hostRoot,
     data: join(hostRoot, "data"),
     obsidianConfig: join(hostRoot, "obsidian-config"),
+    obsidianVaultConfig: join(hostRoot, "obsidian-config", "vault-config"),
+    obsidianProjectionRoot: join(hostRoot, "data", "brain", "projections", "obsidian-vault"),
+    obsidianVaultConfigMountpoint: join(hostRoot, "data", "brain", "projections", "obsidian-vault", ".obsidian"),
+    obsidianBasesMountpoint: join(hostRoot, "data", "brain", "projections", "obsidian-vault", "Bases"),
+    obsidianAuthoringMountpoint: join(hostRoot, "data", "brain", "projections", "obsidian-vault", "Authoring"),
+    obsidianBases: join(hostRoot, "data", "brain", "obsidian-ui", "Bases"),
+    obsidianAuthoring: join(hostRoot, "data", "brain", "authoring"),
     envFile: join(hostRoot, "host.env"),
     policy: join(hostRoot, "policy.hujson")
   };

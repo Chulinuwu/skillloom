@@ -238,6 +238,7 @@ test("main-hub role trusts and verifies its private Hub before installing integr
   assert.equal(result.host?.status, "running");
   assert.deepEqual(result.surfaces?.obsidian.workspaces, {
     library: { path: "Library", access: "read-only" },
+    dashboards: { path: "Bases", access: "writable-ui-state" },
     authoring: { path: "Authoring", access: "writable-staging" }
   });
   assert.deepEqual(calls, [
@@ -475,6 +476,7 @@ function host(calls: string[], error?: Error): SetupHostPort {
             internalPort: 3000,
             workspaces: {
               library: { path: "Library", access: "read-only" },
+              dashboards: { path: "Bases", access: "writable-ui-state" },
               authoring: { path: "Authoring", access: "writable-staging" }
             }
           }

@@ -270,13 +270,13 @@ test("runtime refreshes Obsidian projection after brain mutations and recovers a
     }, authHeaders("alice@example.com", [{ roles: ["contributor"] }]));
     assert.equal(capture.status, 201);
     artifactId = (capture.body as { data: { artifact: { id: string } } }).data.artifact.id;
-    assert.match(await readFile(join(dataDir, "brain", "projections", "obsidian", "human-knowledge", "note", `${artifactId}.md`), "utf8"), /Runtime projected note/u);
+    assert.match(await readFile(join(dataDir, "brain", "projections", "obsidian-vault", "Library", "human-knowledge", "note", `${artifactId}.md`), "utf8"), /Runtime projected note/u);
   } finally {
     await first.close();
   }
   const second = await createHubRuntime(env);
   try {
-    assert.match(await readFile(join(dataDir, "brain", "projections", "obsidian", "human-knowledge", "note", `${artifactId}.md`), "utf8"), /Projection is refreshed by the runtime/u);
+    assert.match(await readFile(join(dataDir, "brain", "projections", "obsidian-vault", "Library", "human-knowledge", "note", `${artifactId}.md`), "utf8"), /Projection is refreshed by the runtime/u);
   } finally {
     await second.close();
   }

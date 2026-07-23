@@ -15,6 +15,7 @@ test("setup surfaces derive Obsidian from the same host Serve identity", () => {
       internalPort: 3000,
       workspaces: {
         library: { path: "Library", access: "read-only" },
+        dashboards: { path: "Bases", access: "writable-ui-state" },
         authoring: { path: "Authoring", access: "writable-staging" }
       }
     }

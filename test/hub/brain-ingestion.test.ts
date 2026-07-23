@@ -277,7 +277,7 @@ test("projection manager retries dirty projection and never fails committed muta
     projection: new FileObsidianProjectionManager(root)
   });
   try {
-    const projected = await readFile(join(root, "projections", "obsidian", "human-knowledge", "note", `${artifactId}.md`), "utf8");
+    const projected = await readFile(join(root, "projections", "obsidian-vault", "Library", "human-knowledge", "note", `${artifactId}.md`), "utf8");
     assert.match(projected, /Committed despite projection failure/u);
   } finally {
     await rebuilt.close();
@@ -362,9 +362,11 @@ test("rebuilds read-only Obsidian projection outside canonical writable vault", 
       sensitivity: "tailnet"
     });
     const result = await rebuildObsidianProjection(root, brain, actor);
+    assert.equal(result.root, join(root, "projections", "obsidian-vault", "Library"));
     const projectedPath = join(result.root, "human-knowledge", "note", `${captured.artifact.id}.md`);
     const projected = await readFile(projectedPath, "utf8");
-    const base = await readFile(join(result.root, "Bases", "Knowledge.base"), "utf8");
+    const basePath = join(root, "obsidian-ui", "Bases", "Knowledge.base");
+    const base = await readFile(basePath, "utf8");
     assert.equal(result.artifactCount, 1);
     assert.match(projected, /"skillloomProjection":true/);
     assert.match(projected, /"readOnly":true/);
@@ -373,12 +375,15 @@ test("rebuilds read-only Obsidian projection outside canonical writable vault", 
     assert.match(base, /views:\n  - type: table/u);
     assert.equal(projectedPath.includes("vault/inbox"), false);
     assert.equal(projectedPath.includes("vault/curated"), false);
-    await mkdir(`${result.root}.next`, { recursive: true });
-    await writeFile(join(`${result.root}.next`, "crash-marker.md"), "complete next projection", { mode: 0o444 });
-    await rename(result.root, `${result.root}.previous`);
+    await writeFile(basePath, "views:\n  - type: table\n    name: Custom view\n");
+    const staging = join(root, "projections", "obsidian-staging");
+    await mkdir(join(staging, "next"), { recursive: true });
+    await writeFile(join(staging, "next", "crash-marker.md"), "complete next projection", { mode: 0o444 });
+    await rename(result.root, join(staging, "previous"));
     const rebuilt = await rebuildObsidianProjection(root, brain, actor);
     assert.equal(rebuilt.artifactCount, 1);
     assert.match(await readFile(projectedPath, "utf8"), /Projected note/u);
+    assert.match(await readFile(basePath, "utf8"), /Custom view/u);
   } finally {
     await brain.close();
   }

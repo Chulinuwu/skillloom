@@ -5,6 +5,9 @@ export function brainLayout(root: string) {
   const operations = join(root, "operations");
   const index = join(root, "index");
   const projections = join(root, "projections");
+  const obsidianVault = join(projections, "obsidian-vault");
+  const obsidianProjection = join(obsidianVault, "Library");
+  const obsidianProjectionStaging = join(projections, "obsidian-staging");
   const obsidianAuthoring = join(root, "authoring");
   const obsidianAuthoringState = join(operations, "obsidian-authoring");
   return {
@@ -24,8 +27,11 @@ export function brainLayout(root: string) {
     obsidianAuthoringConflicts: join(obsidianAuthoring, "Conflicts"),
     obsidianAuthoringCheckpoints: join(obsidianAuthoringState, "checkpoints.json"),
     projections,
-    obsidianProjection: join(projections, "obsidian"),
-    obsidianBases: join(projections, "obsidian", "Bases"),
+    obsidianVault,
+    obsidianProjection,
+    obsidianProjectionNext: join(obsidianProjectionStaging, "next"),
+    obsidianProjectionPrevious: join(obsidianProjectionStaging, "previous"),
+    obsidianBases: join(root, "obsidian-ui", "Bases"),
     index,
     audit: join(index, "audit.jsonl"),
     sqlite: join(index, "brain.sqlite")

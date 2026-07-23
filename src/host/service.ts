@@ -3,6 +3,7 @@ import { localBackendsHealthy, waitForLocalBackends } from "./backend-health.js"
 import { hubCapabilitiesHealthy } from "./capability-health.js";
 import { ensureDockerReady } from "./docker-readiness.js";
 import { loginNameFromTailscaleStatus, personalPolicyFragment } from "./policy.js";
+import { prepareObsidianWorkspace } from "./obsidian-workspace.js";
 import { hostPaths, hostStateExists, prepareHostState } from "./state.js";
 import { surfacesFromTailscaleStatus } from "./surfaces.js";
 import { configurePrivateServe, privateServeConfigured } from "./tailscale-serve.js";
@@ -19,9 +20,17 @@ export class HostService {
     if (!loginName) {
       throw new UsageError("Main Hub setup needs an authenticated Tailscale user identity; tagged or headless hosts require an explicit advanced tailnet policy");
     }
+    const existingState = await hostStateExists(this.options.hostRoot);
     const paths = await prepareHostState(this.options.hostRoot, personalPolicyFragment(loginName));
     const docker = await this.requireDocker();
     const compose = ["compose", "--env-file", paths.envFile, "-f", this.composeFile()];
+    if (existingState) {
+      const stopped = await this.dependencies.processes.run(docker, [...compose, "stop", "obsidian"], this.options.env);
+      if (stopped.exitCode !== 0) {
+        throw new Error("Docker Compose could not pause Obsidian for a safe workspace migration");
+      }
+      await prepareObsidianWorkspace(paths.obsidianVaultConfig);
+    }
     const start = [...compose, "up", "-d", "--build", "--wait", "--wait-timeout", "180"];
     const result = await this.dependencies.processes.run(docker, start, this.options.env);
     if (result.exitCode !== 0) {

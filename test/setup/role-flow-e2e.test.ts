@@ -59,6 +59,7 @@ test("main-hub role reports private Hub and split Obsidian workspaces after setu
   assert.equal(result.surfaces?.obsidian.url, "https://skillloom.tailnet.ts.net:8443");
   assert.deepEqual(result.surfaces?.obsidian.workspaces, {
     library: { path: "Library", access: "read-only" },
+    dashboards: { path: "Bases", access: "writable-ui-state" },
     authoring: { path: "Authoring", access: "writable-staging" }
   });
   assert.deepEqual(calls, [
@@ -198,6 +199,7 @@ function host(calls: string[]): SetupHostPort {
             internalPort: 3000,
             workspaces: {
               library: { path: "Library", access: "read-only" },
+              dashboards: { path: "Bases", access: "writable-ui-state" },
               authoring: { path: "Authoring", access: "writable-staging" }
             }
           }
