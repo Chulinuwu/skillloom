@@ -106,7 +106,7 @@ The Hub is the networked control plane. It owns:
 - Immutable candidate uploads and signed release artifacts.
 - Server-side validation, idempotency, and conflict responses.
 
-The backend listens on `127.0.0.1:8787`. It is not published to the LAN or internet.
+The Hub process listens on `0.0.0.0:8787` only inside its isolated container network. Docker publishes it exclusively as `127.0.0.1:8787` on the host, and Obsidian runs on a separate container network, so the backend is not published to the LAN or internet.
 
 ### Obsidian
 

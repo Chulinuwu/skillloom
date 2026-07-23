@@ -1,5 +1,5 @@
 export type HubRuntimeConfig = Readonly<{
-  bindHost: "127.0.0.1";
+  bindHost: "127.0.0.1" | "0.0.0.0";
   port: number;
   dataDir: string;
   appCapability: string;
@@ -11,7 +11,9 @@ const defaultAppCapability = "skillloom.io/cap/skillloom";
 
 export function loadHubRuntimeConfig(env: NodeJS.ProcessEnv = process.env): HubRuntimeConfig {
   const bindHost = env.SKILLLOOM_HUB_BIND_HOST ?? "127.0.0.1";
-  if (bindHost !== "127.0.0.1") throw new Error("SKILLLOOM_HUB_BIND_HOST must be 127.0.0.1");
+  if (bindHost !== "127.0.0.1" && bindHost !== "0.0.0.0") {
+    throw new Error("SKILLLOOM_HUB_BIND_HOST must be 127.0.0.1 or 0.0.0.0");
+  }
   return {
     bindHost,
     port: parsePort(env.SKILLLOOM_HUB_PORT ?? "8787"),

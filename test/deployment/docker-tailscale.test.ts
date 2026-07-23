@@ -16,11 +16,13 @@ test("compose exposes Hub only on host loopback for host Tailscale Serve", async
   assert.doesNotMatch(compose, /image: tailscale\/tailscale/u);
   assert.doesNotMatch(compose, /network_mode: service:tailscale/u);
   assert.match(compose, /"127\.0\.0\.1:8787:8787"/u);
-  assert.match(compose, /SKILLLOOM_HUB_BIND_HOST: 127\.0\.0\.1/u);
+  assert.match(compose, /SKILLLOOM_HUB_BIND_HOST: 0\.0\.0\.0/u);
   assert.doesNotMatch(compose, /TS_AUTHKEY/u);
-  assert.doesNotMatch(compose, /0\.0\.0\.0/u);
+  assert.doesNotMatch(compose, /"0\.0\.0\.0:8787:8787"/u);
   assert.doesNotMatch(compose, /^\s*expose:/mu);
   assert.doesNotMatch(compose, /funnel/iu);
+  assert.match(compose, /skillloom-hub:[\s\S]*networks:\n\s+- hub-runtime/u);
+  assert.match(compose, /obsidian:[\s\S]*networks:\n\s+- obsidian-runtime/u);
 });
 test("compose exposes a hardened Obsidian library and isolated writable authoring workspace", async () => {
   const compose = await read("hub/compose.yaml");
@@ -39,14 +41,18 @@ test("compose exposes a hardened Obsidian library and isolated writable authorin
 });
 
 test("host service configures private Tailscale Serve without Funnel or auth keys", async () => {
-  const service = await read("src/host/service.ts");
+  const [service, serve] = await Promise.all([
+    read("src/host/service.ts"),
+    read("src/host/tailscale-serve.ts")
+  ]);
 
   assert.match(service, /findExecutable\("tailscale"\)/u);
-  assert.match(service, /"serve", "--bg", "--https=443", "http:\/\/127\.0\.0\.1:8787"/u);
-  assert.match(service, /"serve", "--bg", "--https=8443", "http:\/\/127\.0\.0\.1:3000"/u);
-  assert.match(service, /"serve", "status"/u);
-  assert.doesNotMatch(service, /TS_AUTHKEY/u);
-  assert.doesNotMatch(service, /funnel [^-]/iu);
+  assert.match(serve, /--accept-app-caps=\$\{acceptedCapability\}/u);
+  assert.match(serve, /"443",\s+"http:\/\/127\.0\.0\.1:8787"/u);
+  assert.match(serve, /"8443", "http:\/\/127\.0\.0\.1:3000"/u);
+  assert.match(serve, /"serve", "status"/u);
+  assert.doesNotMatch(`${service}\n${serve}`, /TS_AUTHKEY/u);
+  assert.doesNotMatch(`${service}\n${serve}`, /funnel [^-]/iu);
 });
 
 test("deployment artifacts keep state persistent and private", async () => {
@@ -60,6 +66,9 @@ test("deployment artifacts keep state persistent and private", async () => {
   assert.match(ignore, /hub\/data\//u);
   assert.match(ignore, /hub\/obsidian-config\//u);
   assert.match(dockerfile, /FROM node:24\.15\.0-bookworm-slim AS build/u);
+  assert.match(dockerfile, /COPY mode-profile\.mjs mode-profile\.d\.mts \./u);
+  assert.ok(dockerfile.indexOf("RUN npm ci") < dockerfile.indexOf("COPY src ./src"));
+  assert.doesNotMatch(dockerfile, /\.mcp\.json/u);
   assert.match(dockerfile, /127\.0\.0\.1:8787\/healthz/u);
   assert.match(dockerfile, /USER node/u);
 });

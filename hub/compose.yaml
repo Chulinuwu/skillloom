@@ -7,7 +7,7 @@ services:
     ports:
       - "127.0.0.1:8787:8787"
     environment:
-      SKILLLOOM_HUB_BIND_HOST: 127.0.0.1
+      SKILLLOOM_HUB_BIND_HOST: 0.0.0.0
       SKILLLOOM_HUB_PORT: 8787
       SKILLLOOM_HUB_DATA_DIR: /data
       SKILLLOOM_HUB_TRUSTED_PROXY: tailscale-serve
@@ -15,6 +15,8 @@ services:
       SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS: ${SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS:-1000}
     volumes:
       - ${SKILLLOOM_HUB_DATA_DIR:-./data}:/data
+    networks:
+      - hub-runtime
   obsidian:
     image: ${SKILLLOOM_OBSIDIAN_IMAGE:-lscr.io/linuxserver/obsidian:v1.12.7-ls139}
     restart: unless-stopped
@@ -35,3 +37,9 @@ services:
       - ${SKILLLOOM_OBSIDIAN_CONFIG_DIR:-./obsidian-config}:/config
       - ${SKILLLOOM_HUB_DATA_DIR:-./data}/brain/projections/obsidian:/config/Documents/Skillloom/Library:ro
       - ${SKILLLOOM_HUB_DATA_DIR:-./data}/brain/authoring:/config/Documents/Skillloom/Authoring:rw
+    networks:
+      - obsidian-runtime
+
+networks:
+  hub-runtime:
+  obsidian-runtime:

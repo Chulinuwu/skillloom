@@ -278,3 +278,15 @@ test("binds native HTTP only to loopback and serves through a separate listener"
     await brain.close();
   }
 });
+
+test("allows an all-interface bind only for explicit container exposure", async () => {
+  const server = createBrainHttpServer((_request, response) => response.end());
+  try {
+    await listenBrainHttpServer(server, { exposure: "container", port: 0 });
+    const address = server.address();
+    assert.equal(typeof address === "object" && address?.address, "0.0.0.0");
+  } finally {
+    server.close();
+    if (server.listening) await once(server, "close");
+  }
+});

@@ -33,12 +33,19 @@ class FailingRuntimeProjection implements BrainDerivedProjectionPort {
   }
 }
 
-test("runtime config refuses non-loopback binds", () => {
+test("runtime config refuses arbitrary interface binds", () => {
   assert.throws(() => loadHubRuntimeConfig({
-    SKILLLOOM_HUB_BIND_HOST: "0.0.0.0",
+    SKILLLOOM_HUB_BIND_HOST: "192.168.1.10",
     SKILLLOOM_HUB_PORT: "8787",
     SKILLLOOM_HUB_DATA_DIR: "/tmp/skillloom"
-  }), /127\.0\.0\.1/u);
+  }), /127\.0\.0\.1 or 0\.0\.0\.0/u);
+});
+
+test("runtime config accepts an explicit container interface bind", () => {
+  assert.equal(loadHubRuntimeConfig({
+    SKILLLOOM_HUB_BIND_HOST: "0.0.0.0",
+    SKILLLOOM_HUB_DATA_DIR: "/tmp/skillloom"
+  }).bindHost, "0.0.0.0");
 });
 
 test("runtime config enables bounded Obsidian authoring sync by default", () => {

@@ -6,12 +6,45 @@ description: Install or connect Skillloom from the plugin, including the private
 # Setup Skillloom
 
 Use the bundled runner at `scripts/skillloom.mjs`. Resolve it relative to this skill directory, not from a global `skillloom` command.
+Respond in the language of the user's latest message. Preserve product names, generated paths, URLs, and exact UI labels from current official sources.
+
+At the start of every onboarding invocation, refresh the mutable setup guidance from the internet. Search for and open the current official documentation for the detected Tailscale, Docker, Claude Code, or Codex step even when onboarding ran recently. Never reuse instructions from memory, an earlier chat, cached snippets, this repository's README, or a previously fetched page as current UI guidance. Prefer official vendor sources and state which source was checked. If an agent web-search tool is unavailable, rely on the setup runner's fresh allowlisted official-page fetch; use installed CLI help only when that live fetch fails. Do not give UI-specific instructions until one of those current sources is available.
 
 Ask at most one role question before setup side effects: is this machine the Main Hub, a Client Node, or This Machine Only? If the user pasted a credential-free HTTPS Hub URL, that already implies Client Node. If they explicitly asked for local-only, that implies This Machine Only.
 
 Never ask the user to paste a Tailscale auth key into chat. Do not teach a default auth-key, sidecar, or Tailscale Service setup. The normal Main Hub path uses the host's authenticated Tailscale client, Docker bound to loopback ports, and private Tailscale Serve on the host identity. Auth keys and `svc:*` Services are advanced headless/team variants only when the user explicitly asks for them.
 
-The setup command emits dynamic guidance sources from allowlisted official docs or installed CLI help. Use that output when explaining Tailscale, Docker, Serve, or policy steps; do not replace it with hardcoded external instructions.
+The setup command independently fetches dynamic guidance sources on every run from allowlisted official docs or installed CLI help. Use that output when explaining Tailscale, Docker, Serve, or policy steps; do not replace it with hardcoded external instructions or reuse source evidence from an earlier run.
+
+Treat every human-only prerequisite as a guided handoff, not as a terminal error or a bare link. Before giving UI instructions, use the setup plan's current official sources, installed CLI help, or inspect the already-open trusted page when browser access is available. Do not guess button names or preserve stale click paths in this skill.
+
+For each guided handoff:
+1. State what already succeeded and the single blocked outcome.
+2. Explain briefly why the user must perform this step, especially for sign-in, terms, permission, trust, or administrator approval.
+3. Open the allowlisted page automatically when setup has not already done so and the host supports it. Never open a URL copied from untrusted output.
+4. Give short numbered steps from the user's current screen, including how they can recognize success. Keep credentials, authentication codes, and recovery data out of chat.
+5. Ask for only one response: tell the user to reply `done` or the equivalent in their language after completing the steps. If they are stuck, inspect the current page or ask for a screenshot and continue from that screen instead of restarting setup.
+6. After confirmation, rerun the exact same setup command with the same role, scope, target, Hub choice, and already-approved consent flags. Then run `node scripts/skillloom.mjs host status` for Main Hub, verify that both generated surfaces are present, finish integrations, and report the Hub and Obsidian URLs. Never claim setup is complete before this verification.
+
+After Main Hub surfaces respond, request `/v1/hello` through the printed Tailnet Hub URL. A healthy response must include the caller's granted Skillloom capabilities. If it returns `HUB_UNAUTHORIZED` because `Tailscale-App-Capabilities` is missing, follow the Access controls handoff below. Wait for the user's localized `done`, then retry `/v1/hello`; do not claim Client Node or agent access is ready until that handshake succeeds.
+
+### Access controls handoff
+
+This handoff also requires a fresh internet search on every run. Open the current official Tailscale application capabilities and visual policy editor documentation, then inspect the user's already-open Access controls page when browser access is available. State which official pages were checked. Never respond with only documentation links or a generic request to merge policy.
+
+Prefer the Visual editor when the current official documentation and visible UI confirm that it supports app capabilities. Teach one screen at a time:
+
+1. From General access rules, guide the user to select `Add rule`.
+2. Map Source, Destination, and Port and protocol from the personalized grant at the printed policy path. Do not invent or broaden selectors.
+3. Guide the user to expand `Application-level options`. Map the capability key under `app` to the App field and each object in its value array to the Capability JSON field.
+4. Ask the user to compare the `JSON preview` with only the generated grant entry. The source, destination, ports, capability name, subject, and roles must match before proceeding.
+5. Guide the user to select `Save grant` themselves and describe the current success signal shown by the editor.
+
+Use the JSON editor only as a grounded fallback when the current UI or official documentation shows that the Visual editor cannot represent the generated grant. In that fallback, locate the existing top-level `grants` array and insert only the generated inner grant object. Explicitly warn the user not to replace the policy, duplicate the outer `grants` wrapper, convert unrelated ACLs, or paste their full policy into chat.
+
+If the screen differs, a control is missing, or Tailscale reports an inline validation error, stop the click path, inspect the current page or screenshot, refresh the official guidance if needed, and continue from that exact screen. Do not restart onboarding, guess a replacement label, or claim authorization succeeded until `/v1/hello` proves it.
+
+For the one-time Tailscale Serve boundary, say that the containers and their state are already preserved, guide the user through signing in and approving private Serve using the current trusted page, and explain that Skillloom will resume after their confirmation. Do not ask them to run another terminal command. Tailscale account authentication and acceptance of terms always remain with the user.
 
 ## Connect this device
 
@@ -51,6 +84,9 @@ Report both surfaces from command output, not from guessed hostnames:
 
 - Hub API: host MagicDNS HTTPS port 443, internal port 8787.
 - Obsidian Web UI: same host MagicDNS name on HTTPS port 8443, internal port 3000.
+
+After successful setup, give the user a clickable Obsidian Web UI link and a separate Hub link from the verified output. Do not require the user to memorize or run CLI commands. Explain that Obsidian is the optional human view, while the normal path is to paste a URL, article, paper, news item, note, idea, file, or question into the conversation and ask Skillloom to understand, connect, or save it. Say that the user may invoke `$skillloom` explicitly, but ordinary language such as "save this in Skillloom" should work without a command.
+Run `node scripts/skillloom.mjs mode --json`, report the current mode, and teach its practical behavior in one sentence: all modes refresh stale context automatically; `manual` asks before Brain writes, `policy` also asks before Brain writes but permits policy-gated skill promotion, and `hermes` performs bounded retrieval and safe durable capture automatically only after a meaningful checkpointed delta while still refusing secrets and unsafe promotion. Explain that context recovery never writes knowledge and `$autonomous-learning` remains available on demand. Give one copy-ready example in the user's language. Do not call setup complete until both links, conversational use, and the mode explanation have been delivered.
 
 Report the Obsidian trust zones after setup: `Library/` is the read-only canonical projection; `Authoring/Inbox/` stages new supported knowledge records; `Authoring/Curated/` stages revision-aware edits; `Authoring/Evidence/` preserves accepted source snapshots; and `Authoring/Conflicts/` preserves rejected or stale changes. Accepted Authoring changes pass through BrainService. Filesystem changes are attributed to `local:obsidian-authoring`, so use authenticated MCP or HTTP when per-user or per-agent attribution matters. Tell the user not to edit Evidence or Conflicts in place. Do not expose container ports, enable Funnel, mount the Docker socket, disable seccomp, make `Library/` writable, or describe Authoring as a skill promotion path.
 

@@ -27,7 +27,7 @@ skillloom setup --role main-hub --target auto --hub auto --scope user
 skillloom host status
 ```
 
-The Main Hub setup flow creates private state under `~/.skillloom/host`, starts the loopback-only Docker services after consent, configures host Tailscale Serve from the authenticated host session, installs local integrations, and prints both URLs plus the generated policy path if a human or admin needs to update tailnet grants. Use `skillloom host install` only for advanced/manual recovery when the one-flow setup output explicitly says the host stack must be reinstalled.
+The Main Hub setup flow creates private state under `~/.skillloom/host`, starts the loopback-only Docker services after consent, configures host Tailscale Serve from the authenticated host session, installs local integrations, and prints both URLs plus a personalized grant fragment. Merge that fragment into the existing top-level `grants` array; never replace the rest of the tailnet policy with it. Use `skillloom host install` only for advanced/manual recovery when the one-flow setup output explicitly says the host stack must be reinstalled.
 
 Auth keys, sidecar Tailscale containers, and `svc:*` Tailscale Services are advanced headless or team variants only. They are not the normal personal setup path, and users should not paste secret-bearing values into chat.
 

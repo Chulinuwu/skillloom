@@ -207,7 +207,7 @@ test("auto setup fails instead of silently falling back when Hub is unavailable"
   await assert.rejects(() => readFile(join(stateRoot, "setup.json"), "utf8"));
 });
 
-test("main-hub role returns a local setup plan without trying client Hub discovery", async () => {
+test("main-hub role trusts and verifies its private Hub before installing integrations", async () => {
   const calls: string[] = [];
   const service = new SetupService(
     hub(calls),
@@ -233,14 +233,45 @@ test("main-hub role returns a local setup plan without trying client Hub discove
     host(calls)
   );
   const result = await service.setup({ target: "agents", hub: "auto", scope: "user", yes: true, role: "main-hub" });
-  assert.equal(result.hub.mode, "local-only");
+  assert.equal(result.hub.mode, "connected");
   assert.equal(result.plan?.role, "main-hub");
   assert.equal(result.host?.status, "running");
   assert.deepEqual(result.surfaces?.obsidian.workspaces, {
     library: { path: "Library", access: "read-only" },
     authoring: { path: "Authoring", access: "writable-staging" }
   });
-  assert.deepEqual(calls, ["environment.detect", "guidance.plan", "host.install:true", "detect:agents", "install:agents"]);
+  assert.deepEqual(calls, [
+    "environment.detect",
+    "guidance.plan",
+    "host.install:true",
+    "hub.discover",
+    "hub.trust",
+    "hub.verifyBrainRead",
+    "hub.reconcile:true:strict",
+    "detect:agents",
+    "install:agents"
+  ]);
+});
+
+test("main-hub endpoint failure stops before integration checkpoints", async () => {
+  const calls: string[] = [];
+  const stateRoot = await mkdtemp(join(tmpdir(), "skillloom-setup-main-hub-offline-"));
+  const service = new SetupService(
+    hub(calls, { localOnly: true }),
+    installer(calls),
+    consent(false, true),
+    { stateRoot, packageRoot: "/package", packageVersion: "1.0.0" },
+    undefined,
+    undefined,
+    host(calls)
+  );
+
+  await assert.rejects(
+    () => service.setup({ target: "agents", hub: "auto", scope: "user", yes: true, role: "main-hub" }),
+    /private HTTPS endpoint was not reachable/u
+  );
+  assert.deepEqual(calls, ["host.install:true", "hub.discover"]);
+  await assert.rejects(() => readFile(join(stateRoot, "setup.json"), "utf8"));
 });
 
 test("main-hub host failure stops before integration checkpoints", async () => {

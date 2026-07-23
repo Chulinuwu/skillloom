@@ -1,9 +1,8 @@
-import { constants } from "node:fs";
-import { access, chmod, copyFile, mkdir } from "node:fs/promises";
+import { access, chmod, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { atomicWriteFile } from "../files/atomic-write.js";
 export type HostPaths = ReturnType<typeof hostPaths>;
-export async function prepareHostState(hostRoot: string, packageRoot: string): Promise<HostPaths> {
+export async function prepareHostState(hostRoot: string, policyFragment: string): Promise<HostPaths> {
   const paths = hostPaths(hostRoot);
   await Promise.all([
     secureDirectory(hostRoot),
@@ -11,12 +10,7 @@ export async function prepareHostState(hostRoot: string, packageRoot: string): P
     secureDirectory(paths.obsidianConfig)
   ]);
   await atomicWriteFile(paths.envFile, hostEnvironment(paths), { mode: 0o600 });
-  try {
-    await copyFile(join(packageRoot, "hub", "policy.example.hujson"), paths.policy, constants.COPYFILE_EXCL);
-    await chmod(paths.policy, 0o600);
-  } catch (error) {
-    if (!isAlreadyExists(error)) throw error;
-  }
+  await atomicWriteFile(paths.policy, policyFragment, { mode: 0o600 });
   return paths;
 }
 export async function hostStateExists(hostRoot: string): Promise<boolean> {
@@ -50,9 +44,6 @@ function quote(value: string): string {
 async function secureDirectory(path: string): Promise<void> {
   await mkdir(path, { recursive: true, mode: 0o700 });
   await chmod(path, 0o700);
-}
-function isAlreadyExists(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
 }
 function isMissing(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { SetupEnvironmentDetector } from "../../src/setup/environment.js";
+import { SystemProcessPort } from "../../src/setup/process.js";
 import type { ProcessPort, ProcessResult } from "../../src/setup/types.js";
 
 test("setup environment detects authenticated Tailscale and Docker Compose", async () => {
@@ -19,6 +23,19 @@ test("setup environment distinguishes missing tools from required login", async 
     tailscaleStatus: { exitCode: 1, stdout: "", stderr: "not logged in" }
   }));
   assert.deepEqual(await detector.detect(), { tailscale: "needs-login", docker: "missing" });
+});
+
+test("process discovery can use an application-bundled executable outside PATH", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillloom-executable-fallback-"));
+  const executable = join(root, "tailscale");
+  try {
+    await writeFile(executable, "#!/bin/sh\nexit 0\n");
+    await chmod(executable, 0o755);
+    const processes = new SystemProcessPort("", { tailscale: [executable] });
+    assert.equal(await processes.findExecutable("tailscale"), executable);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 function processes(state: {

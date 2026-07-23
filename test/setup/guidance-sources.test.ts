@@ -14,6 +14,23 @@ test("dynamic setup guidance records official allowlisted docs with hash evidenc
   assert.ok(sources.every((source) => source.url?.startsWith("https://tailscale.com/") || source.url?.startsWith("https://docs.docker.com/")));
   assert.ok(sources.every((source) => /^sha256:/u.test(source.contentHash)));
   assert.ok(sources.every((source) => source.snippets.length > 0));
+  assert.ok(sources.some((source) => source.title === "Tailscale visual policy editor"));
+});
+
+test("dynamic setup guidance refetches official docs for every onboarding run", async () => {
+  const requests: string[] = [];
+  const guidance = new DynamicSetupGuidanceSources(processes(), async (url) => {
+    requests.push(url);
+    return {
+      body: `Published: today request ${requests.length}`,
+      fetchedAt: `2026-07-22T00:00:0${requests.length}.000Z`
+    };
+  });
+  const first = await guidance.collect();
+  const second = await guidance.collect();
+  assert.equal(requests.length, 10);
+  assert.notEqual(first[0].fetchedAt, second[0].fetchedAt);
+  assert.notEqual(first[0].contentHash, second[0].contentHash);
 });
 
 test("dynamic setup guidance falls back to installed CLI help when docs fail", async () => {

@@ -63,7 +63,11 @@ export async function createHubRuntime(env: NodeJS.ProcessEnv = process.env, dep
     hubInstanceId: state.hubInstanceId,
     signingPublicKey: state.signer.publicKey,
     async start(): Promise<void> {
-      await listenBrainHttpServer(server, { host: config.bindHost, port: config.port });
+      await listenBrainHttpServer(server, {
+        exposure: config.bindHost === "0.0.0.0" ? "container" : "loopback",
+        host: config.bindHost,
+        port: config.port
+      });
       authoringLoop?.start();
     },
     async close(): Promise<void> {

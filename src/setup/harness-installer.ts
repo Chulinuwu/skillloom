@@ -35,22 +35,48 @@ export class HarnessInstaller implements HarnessInstallerPort {
   }
 
   private async installClaude(executable: string, request: HarnessInstallRequest): Promise<HarnessInstallResult> {
+    const inventory = await this.processes.run(executable, ["plugin", "list", "--json"]);
+    if (inventory.exitCode !== 0) return failure(request.target, "plugin inventory", inventory);
+    const plugin = claudePluginState(inventory.stdout, request.scope);
+    if (plugin.status === "enabled" && plugin.version === request.packageVersion) {
+      return { target: request.target, status: "unchanged", message: "Skillloom plugin is already installed" };
+    }
+    if (plugin.status === "disabled") {
+      const enabled = await this.processes.run(executable, ["plugin", "enable", PLUGIN, "--scope", request.scope]);
+      if (enabled.exitCode !== 0) return failure(request.target, "plugin enable", enabled);
+      if (plugin.version === request.packageVersion) {
+        return { target: request.target, status: "installed", message: "Skillloom plugin installed" };
+      }
+    }
+    if (plugin.status !== "missing") {
+      return await this.updateClaude(executable, request);
+    }
+
     const registered = await this.processes.run(executable, [
       "plugin", "marketplace", "add", request.packageRoot, "--scope", request.scope
     ]);
     if (registered.exitCode !== 0) return failure(request.target, "marketplace registration", registered);
-
-    const inventory = await this.processes.run(executable, ["plugin", "list", "--json"]);
-    if (inventory.exitCode !== 0) return failure(request.target, "plugin inventory", inventory);
-    const state = claudePluginState(inventory.stdout, request.scope);
-    if (state === "enabled") {
-      return { target: request.target, status: "unchanged", message: "Skillloom plugin is already installed" };
-    }
-
-    const action = state === "disabled" ? "enable" : "install";
-    const installed = await this.processes.run(executable, ["plugin", action, PLUGIN, "--scope", request.scope]);
-    if (installed.exitCode !== 0) return failure(request.target, `plugin ${action}`, installed);
+    const installed = await this.processes.run(executable, ["plugin", "install", PLUGIN, "--scope", request.scope]);
+    if (installed.exitCode !== 0) return failure(request.target, "plugin install", installed);
     return { target: request.target, status: "installed", message: "Skillloom plugin installed" };
+  }
+  private async updateClaude(executable: string, request: HarnessInstallRequest): Promise<HarnessInstallResult> {
+    const marketplace = await this.processes.run(executable, ["plugin", "marketplace", "update", MARKETPLACE]);
+    if (marketplace.exitCode !== 0) return failure(request.target, "marketplace update", marketplace);
+    const updated = await this.processes.run(executable, ["plugin", "update", PLUGIN, "--scope", request.scope]);
+    if (updated.exitCode !== 0) return failure(request.target, "plugin update", updated);
+    const inventory = await this.processes.run(executable, ["plugin", "list", "--json"]);
+    if (inventory.exitCode !== 0) return failure(request.target, "plugin verification", inventory);
+    const plugin = claudePluginState(inventory.stdout, request.scope);
+    if (plugin.status !== "enabled" || plugin.version !== request.packageVersion) {
+      const found = plugin.status === "missing" ? "missing" : plugin.version ?? "unknown";
+      return {
+        target: request.target,
+        status: "failed",
+        message: `Plugin update did not activate Skillloom ${request.packageVersion} (found ${found})`
+      };
+    }
+    return { target: request.target, status: "installed", message: "Skillloom plugin updated" };
   }
 
   private async installCodex(executable: string, request: HarnessInstallRequest): Promise<HarnessInstallResult> {
@@ -61,6 +87,12 @@ export class HarnessInstaller implements HarnessInstallerPort {
         message: "Codex plugins support user scope only; use --scope user or --target agents --scope project"
       };
     }
+    const current = await this.processes.run(executable, ["plugin", "list", "--json"]);
+    if (current.exitCode !== 0) return failure(request.target, "plugin inventory", current);
+    if (codexPluginInstalled(current.stdout)) {
+      return { target: request.target, status: "unchanged", message: "Skillloom plugin is already installed" };
+    }
+
     const registered = await this.processes.run(executable, [
       "plugin", "marketplace", "add", request.packageRoot, "--json"
     ]);
@@ -92,12 +124,19 @@ export class HarnessInstaller implements HarnessInstallerPort {
   }
 }
 
-function claudePluginState(output: string, scope: HarnessInstallRequest["scope"]): "missing" | "disabled" | "enabled" {
+type ClaudePluginState = {
+  status: "missing" | "disabled" | "enabled";
+  version?: string;
+};
+function claudePluginState(output: string, scope: HarnessInstallRequest["scope"]): ClaudePluginState {
   const value: unknown = JSON.parse(output);
   if (!Array.isArray(value)) throw new Error("Claude plugin inventory returned an invalid response");
   const plugin = value.find((item) => isRecord(item) && item.id === PLUGIN && item.scope === scope);
-  if (!isRecord(plugin)) return "missing";
-  return plugin.enabled === false ? "disabled" : "enabled";
+  if (!isRecord(plugin)) return { status: "missing" };
+  return {
+    status: plugin.enabled === false ? "disabled" : "enabled",
+    version: typeof plugin.version === "string" ? plugin.version : undefined
+  };
 }
 
 function codexPluginInstalled(output: string): boolean {

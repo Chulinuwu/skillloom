@@ -38,6 +38,7 @@ export interface ConsentPort {
 export type HarnessInstallRequest = {
   target: SetupHarnessTarget;
   scope: Scope;
+  packageVersion: string;
   packageRoot: string;
   destinationRoot: string;
 };
@@ -56,7 +57,7 @@ export interface HarnessInstallerPort {
 export type SetupHostResult = {
   command: "host";
   action: "install" | "status";
-  status: "running" | "stopped";
+  status: "running" | "degraded" | "stopped";
   root: string;
   policyPath: string;
   surfaces: SetupSurfaces | null;
@@ -79,7 +80,7 @@ export type ProcessResult = {
 
 export interface ProcessPort {
   findExecutable(name: string): Promise<string | null>;
-  run(executable: string, args: string[], environment?: NodeJS.ProcessEnv): Promise<ProcessResult>;
+  run(executable: string, args: string[], environment?: NodeJS.ProcessEnv, timeoutMs?: number): Promise<ProcessResult>;
 }
 
 export type SetupEnvironment = {

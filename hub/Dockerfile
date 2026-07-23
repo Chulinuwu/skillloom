@@ -2,11 +2,12 @@ FROM node:24.15.0-bookworm-slim AS build
 
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.json ./
+RUN npm ci
+COPY mode-profile.mjs mode-profile.d.mts ./
 COPY src ./src
 COPY skills ./skills
 COPY hooks ./hooks
-COPY .mcp.json ./.mcp.json
-RUN npm ci && npm run build && npm prune --omit=dev
+RUN npm run build && npm prune --omit=dev
 
 FROM node:24.15.0-bookworm-slim AS runtime
 
@@ -21,7 +22,6 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/skills ./skills
 COPY --from=build --chown=node:node /app/hooks ./hooks
-COPY --from=build --chown=node:node /app/.mcp.json ./.mcp.json
 VOLUME ["/data"]
 USER node
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD node -e "fetch('http://127.0.0.1:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

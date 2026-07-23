@@ -61,7 +61,21 @@ test("main-hub role reports private Hub and split Obsidian workspaces after setu
     library: { path: "Library", access: "read-only" },
     authoring: { path: "Authoring", access: "writable-staging" }
   });
-  assert.deepEqual(calls, ["environment.detect", "sources.collect", "host.install:true", "detect:claude", "install:claude", "detect:codex", "install:codex", "detect:agents", "install:agents"]);
+  assert.deepEqual(calls, [
+    "environment.detect",
+    "sources.collect",
+    "host.install:true",
+    "hub.discover:https://skillloom.tailnet.ts.net",
+    "hub.trust",
+    "hub.verifyBrainRead",
+    "hub.reconcile:true:strict",
+    "detect:claude",
+    "install:claude",
+    "detect:codex",
+    "install:codex",
+    "detect:agents",
+    "install:agents"
+  ]);
 });
 
 test("client-node role trusts and verifies a credential-free Hub URL before installation", async () => {

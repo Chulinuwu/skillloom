@@ -10,7 +10,8 @@ type FetchTextPort = (url: string) => Promise<{ body: string; fetchedAt: string 
 const OFFICIAL_DOCS: OfficialDoc[] = [
   { title: "Tailscale Serve", url: "https://tailscale.com/docs/features/tailscale-serve" },
   { title: "Tailscale serve command", url: "https://tailscale.com/docs/reference/tailscale-cli/serve" },
-  { title: "Tailscale Services", url: "https://tailscale.com/docs/features/tailscale-services" },
+  { title: "Tailscale application capabilities", url: "https://tailscale.com/docs/features/access-control/grants/grants-app-capabilities" },
+  { title: "Tailscale visual policy editor", url: "https://tailscale.com/docs/features/visual-editor" },
   { title: "Docker Compose install", url: "https://docs.docker.com/compose/install/" }
 ];
 
@@ -49,7 +50,21 @@ export class DynamicSetupGuidanceSources {
     const curl = await this.processes.findExecutable("curl");
     if (!curl) throw new Error("curl unavailable");
     const fetchedAt = new Date().toISOString();
-    const response = await this.processes.run(curl, ["--fail", "--silent", "--show-error", "--location", "--max-time", "3", "--proto", "=https", url]);
+    const response = await this.processes.run(curl, [
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--location",
+      "--max-time",
+      "3",
+      "--proto",
+      "=https",
+      "--header",
+      "Cache-Control: no-cache",
+      "--header",
+      "Pragma: no-cache",
+      url
+    ]);
     if (response.exitCode !== 0) throw new Error(response.stderr || `curl exited ${response.exitCode}`);
     return { body: response.stdout, fetchedAt };
   }
@@ -89,7 +104,7 @@ function snippets(body: string): string[] {
     .split(/\r?\n/u)
     .map((line) => sanitizeSnippet(line))
     .filter((line) => !/\bfunnel\b/iu.test(line))
-    .filter((line) => /(serve|service|compose|docker|login|auth|tailscale)/iu.test(line))
+    .filter((line) => /(serve|service|compose|docker|login|auth|tailscale|grant|capabilit|policy|access control)/iu.test(line))
     .filter(Boolean)
     .slice(0, 3)
     .map((line) => line.slice(0, 180));

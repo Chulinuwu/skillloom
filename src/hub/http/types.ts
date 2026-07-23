@@ -28,6 +28,7 @@ export type BrainHttpListenerDependencies = {
 export type BrainHttpRequestListener = RequestListener;
 
 export type BrainHttpListenOptions = {
+  exposure?: "loopback" | "container";
   host?: string;
   port: number;
 };

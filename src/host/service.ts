@@ -1,6 +1,11 @@
 import { UsageError } from "../domain/errors.js";
+import { localBackendsHealthy, waitForLocalBackends } from "./backend-health.js";
+import { hubCapabilitiesHealthy } from "./capability-health.js";
+import { ensureDockerReady } from "./docker-readiness.js";
+import { loginNameFromTailscaleStatus, personalPolicyFragment } from "./policy.js";
 import { hostPaths, hostStateExists, prepareHostState } from "./state.js";
 import { surfacesFromTailscaleStatus } from "./surfaces.js";
+import { configurePrivateServe, privateServeConfigured } from "./tailscale-serve.js";
 import type { HostResult, HostServiceDependencies, HostServiceOptions } from "./types.js";
 export class HostService {
   constructor(
@@ -9,9 +14,13 @@ export class HostService {
   ) {}
   async install(yes: boolean): Promise<HostResult> {
     await this.requireConsent(yes);
-    const paths = await prepareHostState(this.options.hostRoot, this.options.packageRoot);
+    const tailscaleSession = await this.requireAuthenticatedTailscale();
+    const loginName = loginNameFromTailscaleStatus(tailscaleSession.status);
+    if (!loginName) {
+      throw new UsageError("Main Hub setup needs an authenticated Tailscale user identity; tagged or headless hosts require an explicit advanced tailnet policy");
+    }
+    const paths = await prepareHostState(this.options.hostRoot, personalPolicyFragment(loginName));
     const docker = await this.requireDocker();
-    const tailscale = await this.requireAuthenticatedTailscale();
     const compose = ["compose", "--env-file", paths.envFile, "-f", this.composeFile()];
     const start = [...compose, "up", "-d", "--build", "--wait", "--wait-timeout", "180"];
     const result = await this.dependencies.processes.run(docker, start, this.options.env);
@@ -19,8 +28,17 @@ export class HostService {
       await this.dependencies.processes.run(docker, [...compose, "down"], this.options.env);
       throw new Error("Docker Compose could not start Skillloom Hub; the containers were removed while persistent state was preserved");
     }
-    await this.configureServe(tailscale);
-    return await this.result("install", docker, paths);
+    await configurePrivateServe(
+      this.dependencies.processes,
+      tailscaleSession.executable,
+      this.options.env,
+      this.options.platform ?? process.platform
+    );
+    const installed = await this.result("install", docker, paths);
+    if (installed.status !== "running") {
+      throw new UsageError("Skillloom containers started, but their host-loopback backends are not reachable; persistent state was preserved for retry");
+    }
+    return installed;
   }
   async status(): Promise<HostResult> {
     if (!await hostStateExists(this.options.hostRoot)) {
@@ -32,19 +50,34 @@ export class HostService {
   private async result(action: HostResult["action"], docker: string, paths: ReturnType<typeof hostPaths>): Promise<HostResult> {
     const compose = ["compose", "--env-file", paths.envFile, "-f", this.composeFile()];
     const ps = await this.dependencies.processes.run(docker, [...compose, "ps", "--status", "running", "--services"]);
-    const status = ps.exitCode === 0 && ps.stdout.includes("skillloom-hub") && ps.stdout.includes("obsidian") ? "running" : "stopped";
+    const composeRunning = ps.exitCode === 0 && ps.stdout.includes("skillloom-hub") && ps.stdout.includes("obsidian");
+    const probe = this.dependencies.localBackendsHealthy ?? localBackendsHealthy;
+    const backendsHealthy = composeRunning && (action === "install"
+      ? await waitForLocalBackends(probe, this.dependencies.wait)
+      : await probe());
+    const status = !composeRunning ? "stopped" : backendsHealthy ? "running" : "degraded";
     const tailscaleExecutable = await this.dependencies.processes.findExecutable("tailscale");
     const tailscale = status === "running" && tailscaleExecutable
       ? await this.dependencies.processes.run(tailscaleExecutable, ["status", "--json"])
       : { exitCode: 1, stdout: "", stderr: "" };
-    const surfaces = tailscale.exitCode === 0 ? surfacesFromTailscaleStatus(tailscale.stdout) : null;
+    const serveReady = tailscale.exitCode === 0
+      && tailscaleExecutable !== null
+      && await privateServeConfigured(this.dependencies.processes, tailscaleExecutable, this.options.env);
+    const surfaces = serveReady ? surfacesFromTailscaleStatus(tailscale.stdout) : null;
+    const capabilitiesReady = surfaces
+      ? await hubCapabilitiesHealthy(this.dependencies.processes, surfaces.hub.url, this.options.env)
+      : false;
     const nextActions = status === "running"
       ? [
-          `Review and apply ${paths.policy} in the Tailscale admin console`,
+          ...(capabilitiesReady
+            ? []
+            : [`Merge the personalized grant in ${paths.policy} into the existing top-level grants array in the Tailscale admin console`]),
           "Open the printed Hub and Obsidian URLs from another device in the same tailnet",
           ...(surfaces ? [] : ["Rerun skillloom host status after Tailscale reports its MagicDNS suffix"])
         ]
-      : ["Inspect Docker Compose logs and rerun skillloom host install"];
+      : status === "degraded"
+        ? ["Inspect Docker Compose logs because the containers are running but their host-loopback backends are unreachable, then rerun skillloom host install"]
+        : ["Inspect Docker Compose logs and rerun skillloom host install"];
     return { command: "host", action, status, root: paths.root, policyPath: paths.policy, surfaces, nextActions };
   }
   private async requireConsent(yes: boolean): Promise<void> {
@@ -59,24 +92,19 @@ export class HostService {
     if (!docker) throw new UsageError("Docker with Compose v2 is required to host Skillloom");
     const version = await this.dependencies.processes.run(docker, ["compose", "version"]);
     if (version.exitCode !== 0) throw new UsageError("Docker Compose v2 is required to host Skillloom");
+    await ensureDockerReady(this.dependencies.processes, docker, {
+      env: this.options.env,
+      platform: this.options.platform ?? process.platform,
+      ...(this.dependencies.wait ? { wait: this.dependencies.wait } : {})
+    });
     return docker;
   }
-  private async requireAuthenticatedTailscale(): Promise<string> {
+  private async requireAuthenticatedTailscale(): Promise<{ executable: string; status: string }> {
     const tailscale = await this.dependencies.processes.findExecutable("tailscale");
     if (!tailscale) throw new UsageError("Tailscale CLI is required on the Main Hub host; install it and sign in before rerunning setup");
     const status = await this.dependencies.processes.run(tailscale, ["status", "--json"]);
     if (status.exitCode !== 0) throw new UsageError("Main Hub setup needs a human Tailscale login on this host before Skillloom can publish private Serve URLs");
-    return tailscale;
-  }
-  private async configureServe(tailscale: string): Promise<void> {
-    const hub = await this.dependencies.processes.run(tailscale, ["serve", "--bg", "--https=443", "http://127.0.0.1:8787"]);
-    if (hub.exitCode !== 0) throw new Error("Tailscale Serve could not publish the Skillloom Hub; Docker state was preserved for retry");
-    const obsidian = await this.dependencies.processes.run(tailscale, ["serve", "--bg", "--https=8443", "http://127.0.0.1:3000"]);
-    if (obsidian.exitCode !== 0) throw new Error("Tailscale Serve could not publish Obsidian; Docker state was preserved for retry");
-    const status = await this.dependencies.processes.run(tailscale, ["serve", "status"]);
-    if (status.exitCode !== 0 || /funnel/iu.test(status.stdout) || !status.stdout.includes("127.0.0.1:8787") || !status.stdout.includes("127.0.0.1:3000")) {
-      throw new Error("Tailscale Serve verification failed; Docker state was preserved for retry");
-    }
+    return { executable: tailscale, status: status.stdout };
   }
   private composeFile(): string {
     return `${this.options.packageRoot}/hub/compose.yaml`;

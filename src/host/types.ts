@@ -15,7 +15,7 @@ export type HostSurfaces = {
 export type HostResult = {
   command: "host";
   action: "install" | "status";
-  status: "running" | "stopped";
+  status: "running" | "degraded" | "stopped";
   root: string;
   policyPath: string;
   surfaces: HostSurfaces | null;
@@ -25,8 +25,16 @@ export type HostServiceOptions = {
   packageRoot: string;
   hostRoot: string;
   env: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
 };
 export type HostServiceDependencies = {
   processes: ProcessPort;
   consent: ConsentPort;
+  localBackendsHealthy?: () => Promise<boolean>;
+  wait?: (milliseconds: number) => Promise<void>;
+};
+export type DockerReadinessOptions = {
+  env: NodeJS.ProcessEnv;
+  platform: NodeJS.Platform;
+  wait?: (milliseconds: number) => Promise<void>;
 };

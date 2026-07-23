@@ -9,6 +9,7 @@ import type {
   SetupHarnessTarget,
   SetupEnvironmentPort,
   SetupGuidancePort,
+  SetupHostResult,
   SetupHostPort,
   SetupRequest,
   SetupResult,
@@ -47,8 +48,13 @@ export class SetupService implements SetupServicePort {
     if (request.role === "main-hub") {
       await this.requireMainHubConsent(request);
       const host = await this.installHost();
+      const discovery = await this.hub.discover(root, host.surfaces.hub.url);
+      if (discovery.mode === "local-only") {
+        throw new UsageError("Main Hub started but its private HTTPS endpoint was not reachable; local integrations were not installed");
+      }
+      const reconciled = await this.trustAndVerifyHub(root, discovery);
       const targets = await this.installTargets(request);
-      return { command: "setup", hub: { mode: "local-only" }, host, surfaces: host.surfaces, targets, reconciled: null, ...(plan ? { plan } : {}) };
+      return { command: "setup", hub: discovery, host, surfaces: host.surfaces, targets, reconciled, ...(plan ? { plan } : {}) };
     }
     const discovery: HubSetupDiscovery = request.hub === "local" ? { mode: "local-only" } : await this.hub.discover(root, request.hubUrl);
     if (request.hub === "auto" && discovery.mode === "local-only") {
@@ -56,9 +62,7 @@ export class SetupService implements SetupServicePort {
     }
     await this.requireConsent(request, discovery);
     if (discovery.mode === "connected") {
-      await this.hub.trust(root, discovery);
-      await this.hub.verifyBrainRead(root);
-      const reconciled = await this.hub.reconcile({ root, apply: true, strictInitial: true });
+      const reconciled = await this.trustAndVerifyHub(root, discovery);
       const targets = await this.installTargets(request);
       return { command: "setup", hub: discovery, host: null, surfaces: resolveSetupSurfaces(discovery), targets, reconciled, ...(plan ? { plan } : {}) };
     }
@@ -90,13 +94,21 @@ export class SetupService implements SetupServicePort {
     if (!accepted) throw new UsageError("Main Hub setup declined; no host or installation changes were made");
   }
 
-  private async installHost() {
+  private async installHost(): Promise<SetupHostResult & {
+    status: "running";
+    surfaces: NonNullable<SetupHostResult["surfaces"]>;
+  }> {
     if (!this.host) throw new UsageError("Main Hub setup requires a host installer port");
     const result = await this.host.install(true);
     if (result.status !== "running" || !result.surfaces) {
       throw new UsageError("Main Hub host install did not produce running Hub and Obsidian surfaces; local integrations were not installed");
     }
-    return result;
+    return { ...result, status: "running", surfaces: result.surfaces };
+  }
+  private async trustAndVerifyHub(root: string, discovery: Extract<HubSetupDiscovery, { mode: "connected" }>) {
+    await this.hub.trust(root, discovery);
+    await this.hub.verifyBrainRead(root);
+    return await this.hub.reconcile({ root, apply: true, strictInitial: true });
   }
 
   private async installTargets(request: SetupRequest) {
@@ -124,6 +136,7 @@ export class SetupService implements SetupServicePort {
         result = await this.installer.install({
           target,
           scope: request.scope,
+          packageVersion: this.options.packageVersion,
           packageRoot: this.options.packageRoot,
           destinationRoot: this.options.root ?? this.options.stateRoot
         });

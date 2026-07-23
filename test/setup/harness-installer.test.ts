@@ -35,13 +35,13 @@ test("Claude installation registers the local marketplace and installs at the re
     const expected: ExpectedRun[] = [
       {
         executable: "/bin/claude",
-        args: ["plugin", "marketplace", "add", "/tmp/a path", "--scope", scope],
-        result: success()
+        args: ["plugin", "list", "--json"],
+        result: success("[]")
       },
       {
         executable: "/bin/claude",
-        args: ["plugin", "list", "--json"],
-        result: success("[]")
+        args: ["plugin", "marketplace", "add", "/tmp/a path", "--scope", scope],
+        result: success()
       },
       {
         executable: "/bin/claude",
@@ -53,6 +53,7 @@ test("Claude installation registers the local marketplace and installs at the re
     assert.deepEqual(await installer.install({
       target: "claude",
       scope,
+      packageVersion: "0.3.1",
       packageRoot: "/tmp/a path",
       destinationRoot: "/workspace"
     }), {
@@ -65,24 +66,69 @@ test("Claude installation registers the local marketplace and installs at the re
 });
 
 test("Claude installation is idempotent and re-enables a disabled scoped plugin", async () => {
-  const enabled = JSON.stringify([{ id: "skillloom@skillloom-dev", scope: "user", enabled: true }]);
-  const disabled = JSON.stringify([{ id: "skillloom@skillloom-dev", scope: "user", enabled: false }]);
+  const enabled = JSON.stringify([{ id: "skillloom@skillloom-dev", version: "0.3.1", scope: "user", enabled: true }]);
+  const disabled = JSON.stringify([{ id: "skillloom@skillloom-dev", version: "0.3.1", scope: "user", enabled: false }]);
   const expected: ExpectedRun[] = [
-    { executable: "/bin/claude", args: ["plugin", "marketplace", "add", "/package", "--scope", "user"], result: success() },
     { executable: "/bin/claude", args: ["plugin", "list", "--json"], result: success(enabled) },
-    { executable: "/bin/claude", args: ["plugin", "marketplace", "add", "/package", "--scope", "user"], result: success() },
     { executable: "/bin/claude", args: ["plugin", "list", "--json"], result: success(disabled) },
     { executable: "/bin/claude", args: ["plugin", "enable", "skillloom@skillloom-dev", "--scope", "user"], result: success() }
   ];
   const installer = new HarnessInstaller(processPort(expected));
-  const request = { target: "claude" as const, scope: "user" as const, packageRoot: "/package", destinationRoot: "/home/user" };
+  const request = {
+    target: "claude" as const,
+    scope: "user" as const,
+    packageVersion: "0.3.1",
+    packageRoot: "/package",
+    destinationRoot: "/home/user"
+  };
   assert.equal((await installer.install(request)).status, "unchanged");
   assert.equal((await installer.install(request)).status, "installed");
   assert.deepEqual(expected, []);
 });
 
+test("Claude installation refreshes an outdated plugin and verifies the activated version", async () => {
+  const outdated = JSON.stringify([
+    { id: "skillloom@skillloom-dev", version: "0.3.0", scope: "user", enabled: true }
+  ]);
+  const current = JSON.stringify([
+    { id: "skillloom@skillloom-dev", version: "0.3.1", scope: "user", enabled: true }
+  ]);
+  const expected: ExpectedRun[] = [
+    { executable: "/bin/claude", args: ["plugin", "list", "--json"], result: success(outdated) },
+    {
+      executable: "/bin/claude",
+      args: ["plugin", "marketplace", "update", "skillloom-dev"],
+      result: success()
+    },
+    {
+      executable: "/bin/claude",
+      args: ["plugin", "update", "skillloom@skillloom-dev", "--scope", "user"],
+      result: success()
+    },
+    { executable: "/bin/claude", args: ["plugin", "list", "--json"], result: success(current) }
+  ];
+  const installer = new HarnessInstaller(processPort(expected));
+  assert.deepEqual(await installer.install({
+    target: "claude",
+    scope: "user",
+    packageVersion: "0.3.1",
+    packageRoot: "/package",
+    destinationRoot: "/home/user"
+  }), {
+    target: "claude",
+    status: "installed",
+    message: "Skillloom plugin updated"
+  });
+  assert.deepEqual(expected, []);
+});
+
 test("Codex installation uses its marketplace add contract without an unsupported scope flag", async () => {
   const expected: ExpectedRun[] = [
+    {
+      executable: "/bin/codex",
+      args: ["plugin", "list", "--json"],
+      result: success('{"installed":[],"available":[]}')
+    },
     {
       executable: "/bin/codex",
       args: ["plugin", "marketplace", "add", "/tmp/a path", "--json"],
@@ -103,6 +149,7 @@ test("Codex installation uses its marketplace add contract without an unsupporte
   assert.deepEqual(await installer.install({
     target: "codex",
     scope: "user",
+    packageVersion: "0.3.1",
     packageRoot: "/tmp/a path",
     destinationRoot: "/home/user"
   }), {
@@ -119,10 +166,9 @@ test("Codex installation is idempotent and rejects unsupported project scope bef
     available: []
   });
   const expected: ExpectedRun[] = [
-    { executable: "/bin/codex", args: ["plugin", "marketplace", "add", "/package", "--json"], result: success() },
     {
       executable: "/bin/codex",
-      args: ["plugin", "list", "--marketplace", "skillloom-dev", "--available", "--json"],
+      args: ["plugin", "list", "--json"],
       result: success(installed)
     }
   ];
@@ -130,12 +176,14 @@ test("Codex installation is idempotent and rejects unsupported project scope bef
   assert.equal((await installer.install({
     target: "codex",
     scope: "user",
+    packageVersion: "0.3.1",
     packageRoot: "/package",
     destinationRoot: "/home/user"
   })).status, "unchanged");
   assert.deepEqual(await installer.install({
     target: "codex",
     scope: "project",
+    packageVersion: "0.3.1",
     packageRoot: "/package",
     destinationRoot: "/workspace"
   }), {
@@ -148,19 +196,25 @@ test("Codex installation is idempotent and rejects unsupported project scope bef
 
 test("a partial Claude failure is reported and the install can resume safely", async () => {
   const expected: ExpectedRun[] = [
-    { executable: "/bin/claude", args: ["plugin", "marketplace", "add", "/package", "--scope", "user"], result: success() },
     { executable: "/bin/claude", args: ["plugin", "list", "--json"], result: success("[]") },
+    { executable: "/bin/claude", args: ["plugin", "marketplace", "add", "/package", "--scope", "user"], result: success() },
     {
       executable: "/bin/claude",
       args: ["plugin", "install", "skillloom@skillloom-dev", "--scope", "user"],
       result: { exitCode: 2, stdout: "", stderr: "plugin rejected" }
     },
-    { executable: "/bin/claude", args: ["plugin", "marketplace", "add", "/package", "--scope", "user"], result: success() },
     { executable: "/bin/claude", args: ["plugin", "list", "--json"], result: success("[]") },
+    { executable: "/bin/claude", args: ["plugin", "marketplace", "add", "/package", "--scope", "user"], result: success() },
     { executable: "/bin/claude", args: ["plugin", "install", "skillloom@skillloom-dev", "--scope", "user"], result: success() }
   ];
   const installer = new HarnessInstaller(processPort(expected));
-  const request = { target: "claude" as const, scope: "user" as const, packageRoot: "/package", destinationRoot: "/home/user" };
+  const request = {
+    target: "claude" as const,
+    scope: "user" as const,
+    packageVersion: "0.3.1",
+    packageRoot: "/package",
+    destinationRoot: "/home/user"
+  };
   assert.deepEqual(await installer.install(request), {
     target: "claude",
     status: "failed",
@@ -184,7 +238,13 @@ test("portable agents setup is local and does not invoke a process", async () =>
     }
   });
   assert.equal(await installer.detect("agents"), true);
-  assert.deepEqual(await installer.install({ target: "agents", scope: "project", packageRoot: "/package", destinationRoot: "/workspace" }), {
+  assert.deepEqual(await installer.install({
+    target: "agents",
+    scope: "project",
+    packageVersion: "0.3.1",
+    packageRoot: "/package",
+    destinationRoot: "/workspace"
+  }), {
     target: "agents",
     status: "unchanged",
     message: "Portable Agent Skills are already installed"
