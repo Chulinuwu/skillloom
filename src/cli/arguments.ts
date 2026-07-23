@@ -22,6 +22,25 @@ export function parseArguments(argv: string[]): Command {
     rejectUnknown(args);
     return { command, root: process.cwd(), json };
   }
+  if (command === "demo") {
+    const keep = takeFlag(args, "--keep");
+    rejectUnknown(args);
+    return { command, keep, json };
+  }
+  if (command === "benchmark") {
+    const kind = args.shift();
+    if (kind !== "retrieval") {
+      throw new UsageError("benchmark requires retrieval");
+    }
+    const records = positiveInteger(takeValue(args, "--records") ?? "1000", "--records");
+    const iterations = positiveInteger(takeValue(args, "--iterations") ?? "5", "--iterations");
+    const keep = takeFlag(args, "--keep");
+    const workspace = takeValue(args, "--workspace");
+    rejectUnknown(args);
+    return workspace
+      ? { command, kind, records, iterations, keep, workspace, json }
+      : { command, kind, records, iterations, keep, json };
+  }
   if (command === "capture") {
     const source = args.shift();
     if (!source) {
@@ -167,6 +186,13 @@ function parseScope(value: string): Scope {
     throw new UsageError("--scope must be project or user");
   }
   return value;
+}
+function positiveInteger(value: string, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new UsageError(`${flag} must be a positive integer`);
+  }
+  return parsed;
 }
 
 function takeFlag(args: string[], flag: string): boolean {

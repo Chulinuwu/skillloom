@@ -1,7 +1,7 @@
 {
   "name": "@chulinxz/skillloom",
-  "version": "0.3.4",
-  "description": "Private second brain for human knowledge, agent memories, workflows, and governed portable Agent Skills",
+  "version": "0.3.8",
+  "description": "Private second brain that shares agent knowledge without letting memory silently become executable instructions",
   "type": "module",
   "license": "MIT",
   "author": "Chulinuwu",
@@ -36,6 +36,10 @@
     "codex.mcp.json",
     "assets",
     "dist",
+    "docs/architecture",
+    "docs/benchmarks.md",
+    "docs/comparisons.md",
+    "docs/roadmap.md",
     "hub/Dockerfile",
     "hub/README.md",
     "hub/compose.yaml",
@@ -58,7 +62,9 @@
     "pretest": "npm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test --import tsx test/*.test.ts test/adapters/*.test.ts test/cli/*.test.ts test/commands/*.test.ts test/config/*.test.ts test/deployment/*.test.ts test/files/*.test.ts test/hooks/*.test.ts test/hub/*.test.ts test/packaging/*.test.ts test/policy/*.test.ts test/promotions/*.test.ts test/security/*.test.ts test/skills/*.test.ts",
-    "validate:plugin": "node test/packaging/validate-plugin.mjs"
+    "validate:plugin": "node test/packaging/validate-plugin.mjs",
+    "demo": "npm run build --silent && node dist/cli/main.js demo",
+    "benchmark:retrieval": "npm run build --silent && node dist/cli/main.js benchmark retrieval"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",

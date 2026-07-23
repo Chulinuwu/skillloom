@@ -21,6 +21,8 @@ import { bridgeCommand } from "../commands/bridge.js";
 import { setupCommand } from "../commands/setup.js";
 import { syncCommand } from "../commands/sync.js";
 import { hostCommand } from "../commands/host.js";
+import { demoCommand } from "../commands/demo.js";
+import { benchmarkCommand } from "../commands/benchmark.js";
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   try {
@@ -39,6 +41,12 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 }
 
 async function run(command: ReturnType<typeof parseArguments>) {
+  if (command.command === "demo") {
+    return await demoCommand(command);
+  }
+  if (command.command === "benchmark") {
+    return await benchmarkCommand(command);
+  }
   if (command.command === "setup") {
     return await setupCommand(command);
   }

@@ -1,9 +1,33 @@
 import type { ModeProfile } from "../config/mode-profile.js";
 import type { DoctorReport } from "../domain/types.js";
+import type { BrainRetrievalBenchmarkResult } from "../benchmarks/types.js";
+import type { DemoResult } from "../demo/types.js";
 
 export function formatOutput(value: unknown, json: boolean): string {
   if (json) {
     return `${JSON.stringify(value, null, 2)}\n`;
+  }
+  if (isDemoResult(value)) {
+    return [
+      `demo: ${value.summary.passed}/${value.checks.length} checks passed`,
+      ...value.checks.map((check) => `[passed] ${check.name}: ${check.evidence}`),
+      `workspace: ${value.workspaceRetained ? `kept at ${value.workspace}` : "removed"}`,
+      `duration: ${value.durationMs} ms`,
+      ""
+    ].join("\n");
+  }
+  if (isBenchmarkResult(value)) {
+    return [
+      `retrieval benchmark: ${value.records} records, ${value.iterations} iteration(s)`,
+      `implementation: ${value.implementation}`,
+      ...value.cases.map((benchmarkCase) =>
+        `[${benchmarkCase.required ? "required" : "informational"}] ${benchmarkCase.name}: recall@5=${benchmarkCase.recallAt5} rank=${benchmarkCase.rank ?? "none"}`
+      ),
+      `latency: query p50=${value.metrics.queryP50Ms} ms p95=${value.metrics.queryP95Ms} ms, cold start=${value.metrics.coldStartMs} ms, ingest=${value.metrics.ingestMs} ms`,
+      `run: ${value.resumed ? "resumed existing workspace" : "new workspace"}`,
+      `workspace: ${value.workspaceRetained ? `kept at ${value.workspace}` : "removed"}`,
+      ""
+    ].join("\n");
   }
   if (isCandidate(value)) {
     return `${value.candidateId} ${value.state} ${value.metadata.name}\n`;
@@ -72,6 +96,7 @@ type OutputSurfaces = {
     internalPort: number;
     workspaces: {
       library: { path: string; access: string };
+      dashboards: { path: string; access: string };
       authoring: { path: string; access: string };
     };
   };
@@ -79,10 +104,10 @@ type OutputSurfaces = {
 
 function formatSurfaces(value: OutputSurfaces | null): string[] {
   if (value === null) return [];
-  const { library, authoring } = value.obsidian.workspaces;
+  const { library, dashboards, authoring } = value.obsidian.workspaces;
   return [
     `hub: ${value.hub.url} (HTTPS ${value.hub.externalPort})`,
-    `obsidian: ${value.obsidian.url} (HTTPS ${value.obsidian.externalPort}, internal ${value.obsidian.internalPort}, ${library.path} ${library.access}, ${authoring.path} ${authoring.access})`
+    `obsidian: ${value.obsidian.url} (HTTPS ${value.obsidian.externalPort}, internal ${value.obsidian.internalPort}, ${library.path} ${library.access}, ${dashboards.path} ${dashboards.access}, ${authoring.path} ${authoring.access})`
   ];
 }
 
@@ -156,4 +181,10 @@ function isPromotion(value: unknown): value is { promotionId: string; result: st
 }
 function isDoctorReport(value: unknown): value is DoctorReport {
   return typeof value === "object" && value !== null && "command" in value && value.command === "doctor" && "checks" in value && "summary" in value;
+}
+function isDemoResult(value: unknown): value is DemoResult {
+  return typeof value === "object" && value !== null && "command" in value && value.command === "demo" && "checks" in value && Array.isArray(value.checks);
+}
+function isBenchmarkResult(value: unknown): value is BrainRetrievalBenchmarkResult {
+  return typeof value === "object" && value !== null && "command" in value && value.command === "benchmark" && "kind" in value && value.kind === "retrieval";
 }

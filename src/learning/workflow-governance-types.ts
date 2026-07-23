@@ -80,7 +80,7 @@ export type WorkflowBrainPort = Readonly<{
     type: "feedback" | "rejected-update";
     title: string;
     content: string;
-    provenance: Record<string, string | number | boolean | null | readonly string[]>;
+    provenance: Record<string, string | number | boolean | null | string[]>;
     details:
       | { kind: "feedback"; targetArtifactId: string; signal: "negative"; reason: string }
       | { kind: "rejected-update"; targetArtifactId: string; rejectedAt: string; reason: string; retryable: boolean };

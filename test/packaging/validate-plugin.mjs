@@ -75,11 +75,16 @@ async function validateManifests() {
   const readme = await readFile(join(root, "README.md"), "utf8");
   const version = packageJson.version;
 
-  invariant(version === "0.3.4", "package version must be 0.3.4");
+  invariant(version === "0.3.8", "package version must be 0.3.8");
   invariant(packageLock.version === version && packageLock.packages?.[""]?.version === version, "package-lock version must match package.json");
   invariant(packageJson.engines?.node === ">=22.16.0", "package Node.js runtime floor must be 22.16.0");
   invariant(/node:\s*\["22\.16\.0", 24, 26\]/u.test(ci), "CI must test the runtime floor and supported Node.js releases");
   invariant(readme.includes("Node.js 22.16 or newer") && readme.includes("Node.js 22.16, 24, and 26"), "README runtime requirements must match package and CI contracts");
+  invariant(readme.includes("## One link is enough") && readme.includes(repository), "README must lead with agent-driven one-link setup");
+  invariant(readme.includes("## See the boundary in three minutes") && readme.includes("npm run demo"), "README must expose the local trust-boundary demo");
+  invariant(readme.includes("## Supported today") && readme.includes("## Measure retrieval on your machine"), "README must disclose support status and retrieval evidence");
+  invariant(packageJson.scripts?.demo?.includes("dist/cli/main.js demo"), "package scripts must expose the isolated demo");
+  invariant(packageJson.scripts?.["benchmark:retrieval"]?.includes("benchmark retrieval"), "package scripts must expose the retrieval benchmark");
   invariant(packageJson.bin?.skillloom === "dist/cli/main.js", "package bin must expose dist/cli/main.js");
   invariant(/private second brain/iu.test(packageJson.description), "package description must position Skillloom as a private second brain");
   invariant(claude.version === version && codex.version === version, "plugin versions must match package.json");
@@ -267,6 +272,8 @@ async function validateFiles() {
     "mode-profile.d.mts",
     "mode-profile.mjs",
     "plugin-runtime/skillloom.mjs",
+    "docs/benchmarks.md",
+    "docs/comparisons.md",
     "README.md",
     "LICENSE"
   ]) {

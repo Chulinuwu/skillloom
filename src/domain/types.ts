@@ -39,6 +39,8 @@ type GenericDoctorCommand = {
 };
 export type Command =
   | ({ command: "init"; root: string } & JsonOutput)
+  | ({ command: "demo"; keep: boolean } & JsonOutput)
+  | ({ command: "benchmark"; kind: "retrieval"; records: number; iterations: number; keep: boolean; workspace?: string } & JsonOutput)
   | ({ command: "setup"; target: "auto" | ScopedTargetName; hub: SetupHubMode; hubUrl?: string; scope: Scope; yes: boolean; role?: SetupRole } & JsonOutput)
   | ({ command: "host"; action: "install" | "status"; yes: boolean } & JsonOutput)
   | ({ command: "sync"; apply: boolean } & JsonOutput)

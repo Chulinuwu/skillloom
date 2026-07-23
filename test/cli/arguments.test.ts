@@ -53,6 +53,46 @@ test("parses validate and status", () => {
   assert.deepEqual(parseArguments(["status", "--json"]), { command: "status", json: true });
 });
 
+test("parses the isolated demo command", () => {
+  assert.deepEqual(parseArguments(["demo"]), { command: "demo", keep: false, json: false });
+  assert.deepEqual(parseArguments(["demo", "--keep", "--json"]), { command: "demo", keep: true, json: true });
+  assert.throws(() => parseArguments(["demo", "--destination", "somewhere"]), /Unknown flag/u);
+});
+
+test("parses retrieval benchmark controls", () => {
+  assert.deepEqual(parseArguments(["benchmark", "retrieval"]), {
+    command: "benchmark",
+    kind: "retrieval",
+    records: 1000,
+    iterations: 5,
+    keep: false,
+    json: false
+  });
+  assert.deepEqual(parseArguments([
+    "benchmark",
+    "retrieval",
+    "--records",
+    "10000",
+    "--iterations",
+    "3",
+    "--workspace",
+    "/tmp/skillloom-benchmark",
+    "--keep",
+    "--json"
+  ]), {
+    command: "benchmark",
+    kind: "retrieval",
+    records: 10000,
+    iterations: 3,
+    keep: true,
+    workspace: "/tmp/skillloom-benchmark",
+    json: true
+  });
+  assert.throws(() => parseArguments(["benchmark", "retrieval", "--records", "0"]), /positive integer/u);
+  assert.throws(() => parseArguments(["benchmark", "retrieval", "--workspace"]), /requires a value/u);
+  assert.throws(() => parseArguments(["benchmark", "latency"]), /requires retrieval/u);
+});
+
 test("rejects unknown flags", () => {
   assert.throws(() => parseArguments(["init", "--bad"]), /Unknown flag/);
 });

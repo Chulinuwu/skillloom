@@ -70,10 +70,42 @@ test("host output distinguishes the read-only Library from writable Authoring st
         internalPort: 3000,
         workspaces: {
           library: { path: "Library", access: "read-only" },
+          dashboards: { path: "Bases", access: "writable-ui-state" },
           authoring: { path: "Authoring", access: "writable-staging" }
         }
       }
     }
   }, false);
-  assert.match(output, /^obsidian: .*Library read-only, Authoring writable-staging\)$/mu);
+  assert.match(output, /^obsidian: .*Library read-only, Bases writable-ui-state, Authoring writable-staging\)$/mu);
+});
+
+test("demo and benchmark output expose proof and measured limits", () => {
+  const demo = formatOutput({
+    command: "demo",
+    workspace: "/tmp/demo",
+    workspaceRetained: false,
+    durationMs: 10,
+    checks: [{ name: "cross-agent-retrieval", status: "passed", evidence: "artifact ranked first" }],
+    summary: { passed: 1, failed: 0 }
+  }, false);
+  assert.match(demo, /^demo: 1\/1 checks passed$/mu);
+  assert.match(demo, /^\[passed\] cross-agent-retrieval: artifact ranked first$/mu);
+  assert.match(demo, /^workspace: removed$/mu);
+
+  const benchmark = formatOutput({
+    command: "benchmark",
+    kind: "retrieval",
+    implementation: "fts5-bm25-graph",
+    records: 1000,
+    iterations: 5,
+    workspace: "/tmp/benchmark",
+    workspaceRetained: false,
+    resumed: false,
+    cases: [{ name: "cross-language", query: "stale Docker cache", required: false, recallAt5: 0, rank: null }],
+    metrics: { ingestMs: 200, coldStartMs: 20, queryP50Ms: 2, queryP95Ms: 4 }
+  }, false);
+  assert.match(benchmark, /^retrieval benchmark: 1000 records, 5 iteration\(s\)$/mu);
+  assert.match(benchmark, /^\[informational\] cross-language: recall@5=0 rank=none$/mu);
+  assert.match(benchmark, /^latency: query p50=2 ms p95=4 ms, cold start=20 ms, ingest=200 ms$/mu);
+  assert.match(benchmark, /^run: new workspace$/mu);
 });

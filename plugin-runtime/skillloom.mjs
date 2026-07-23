@@ -254,6 +254,23 @@ function parseArguments(argv) {
     rejectUnknown2(args);
     return { command, root: process.cwd(), json };
   }
+  if (command === "demo") {
+    const keep = takeFlag(args, "--keep");
+    rejectUnknown2(args);
+    return { command, keep, json };
+  }
+  if (command === "benchmark") {
+    const kind = args.shift();
+    if (kind !== "retrieval") {
+      throw new UsageError("benchmark requires retrieval");
+    }
+    const records = positiveInteger(takeValue2(args, "--records") ?? "1000", "--records");
+    const iterations = positiveInteger(takeValue2(args, "--iterations") ?? "5", "--iterations");
+    const keep = takeFlag(args, "--keep");
+    const workspace = takeValue2(args, "--workspace");
+    rejectUnknown2(args);
+    return workspace ? { command, kind, records, iterations, keep, workspace, json } : { command, kind, records, iterations, keep, json };
+  }
   if (command === "capture") {
     const source = args.shift();
     if (!source) {
@@ -400,6 +417,13 @@ function parseScope2(value) {
   }
   return value;
 }
+function positiveInteger(value, flag) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new UsageError(`${flag} must be a positive integer`);
+  }
+  return parsed;
+}
 function takeFlag(args, flag) {
   const index = args.indexOf(flag);
   if (index < 0) {
@@ -444,6 +468,28 @@ function formatOutput(value, json) {
   if (json) {
     return `${JSON.stringify(value, null, 2)}
 `;
+  }
+  if (isDemoResult(value)) {
+    return [
+      `demo: ${value.summary.passed}/${value.checks.length} checks passed`,
+      ...value.checks.map((check) => `[passed] ${check.name}: ${check.evidence}`),
+      `workspace: ${value.workspaceRetained ? `kept at ${value.workspace}` : "removed"}`,
+      `duration: ${value.durationMs} ms`,
+      ""
+    ].join("\n");
+  }
+  if (isBenchmarkResult(value)) {
+    return [
+      `retrieval benchmark: ${value.records} records, ${value.iterations} iteration(s)`,
+      `implementation: ${value.implementation}`,
+      ...value.cases.map(
+        (benchmarkCase) => `[${benchmarkCase.required ? "required" : "informational"}] ${benchmarkCase.name}: recall@5=${benchmarkCase.recallAt5} rank=${benchmarkCase.rank ?? "none"}`
+      ),
+      `latency: query p50=${value.metrics.queryP50Ms} ms p95=${value.metrics.queryP95Ms} ms, cold start=${value.metrics.coldStartMs} ms, ingest=${value.metrics.ingestMs} ms`,
+      `run: ${value.resumed ? "resumed existing workspace" : "new workspace"}`,
+      `workspace: ${value.workspaceRetained ? `kept at ${value.workspace}` : "removed"}`,
+      ""
+    ].join("\n");
   }
   if (isCandidate(value)) {
     return `${value.candidateId} ${value.state} ${value.metadata.name}
@@ -506,10 +552,10 @@ function formatOutput(value, json) {
 }
 function formatSurfaces(value) {
   if (value === null) return [];
-  const { library, authoring } = value.obsidian.workspaces;
+  const { library, dashboards, authoring } = value.obsidian.workspaces;
   return [
     `hub: ${value.hub.url} (HTTPS ${value.hub.externalPort})`,
-    `obsidian: ${value.obsidian.url} (HTTPS ${value.obsidian.externalPort}, internal ${value.obsidian.internalPort}, ${library.path} ${library.access}, ${authoring.path} ${authoring.access})`
+    `obsidian: ${value.obsidian.url} (HTTPS ${value.obsidian.externalPort}, internal ${value.obsidian.internalPort}, ${library.path} ${library.access}, ${dashboards.path} ${dashboards.access}, ${authoring.path} ${authoring.access})`
   ];
 }
 function isSetupResult(value) {
@@ -549,6 +595,12 @@ function isPromotion(value) {
 }
 function isDoctorReport(value) {
   return typeof value === "object" && value !== null && "command" in value && value.command === "doctor" && "checks" in value && "summary" in value;
+}
+function isDemoResult(value) {
+  return typeof value === "object" && value !== null && "command" in value && value.command === "demo" && "checks" in value && Array.isArray(value.checks);
+}
+function isBenchmarkResult(value) {
+  return typeof value === "object" && value !== null && "command" in value && value.command === "benchmark" && "kind" in value && value.kind === "retrieval";
 }
 
 // src/commands/init.ts
@@ -2063,7 +2115,7 @@ function buildLearningEpisode(input, now = /* @__PURE__ */ new Date()) {
   const startedAt = normalizeTimestamp(input.startedAt, endedAt);
   const evidence = bounded(input.evidence ?? [], 8).map((item) => evidenceItem(item.summary, item.category ?? "unknown", item.provenance));
   const verifierSignals = bounded(input.verifierSignals ?? [], 8).map((item) => verifierSignal(item.kind, item.status, item.summary, item.provenance));
-  const provenanceHashes = [.../* @__PURE__ */ new Set([...evidence.map((item) => item.provenanceHash), ...verifierSignals.map((item) => item.provenanceHash)])].slice(0, 16);
+  const provenanceHashes2 = [.../* @__PURE__ */ new Set([...evidence.map((item) => item.provenanceHash), ...verifierSignals.map((item) => item.provenanceHash)])].slice(0, 16);
   return {
     taskId: clean(input.taskId ?? `task-${hashText(`${input.host}:${startedAt}:${endedAt}`).slice(7, 19)}`, 120),
     host: input.host,
@@ -2072,7 +2124,7 @@ function buildLearningEpisode(input, now = /* @__PURE__ */ new Date()) {
     endedAt,
     evidence,
     verifierSignals,
-    provenanceHashes
+    provenanceHashes: provenanceHashes2
   };
 }
 function hashEpisodeIdentity(episode) {
@@ -2535,13 +2587,13 @@ async function checkDiscoveryRoot(target, scope, path) {
   }
   return checks;
 }
-function invalidSkillCheck(target, scope, path, skillName, error) {
+function invalidSkillCheck(target, scope, path, skillName2, error) {
   return {
     kind: "installed-skill",
     target,
     scope,
     path,
-    skillName,
+    skillName: skillName2,
     state: "invalid",
     error,
     status: "warning",
@@ -2561,14 +2613,14 @@ function errorMessage(error) {
 
 // src/adapters/path-policy.ts
 import { dirname as dirname5, isAbsolute, parse, relative as relative2, resolve as resolve5 } from "node:path";
-function resolveSkillDestination(root4, skillName) {
-  if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(skillName)) {
-    throw new PathPolicyError(`Unsafe skill name: ${skillName}`);
+function resolveSkillDestination(root4, skillName2) {
+  if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(skillName2)) {
+    throw new PathPolicyError(`Unsafe skill name: ${skillName2}`);
   }
   const destinationRoot = resolve5(root4);
-  const destination = resolve5(destinationRoot, skillName);
+  const destination = resolve5(destinationRoot, skillName2);
   if (dirname5(destination) !== destinationRoot) {
-    throw new PathPolicyError(`Skill destination escapes discovery root: ${skillName}`);
+    throw new PathPolicyError(`Skill destination escapes discovery root: ${skillName2}`);
   }
   return destination;
 }
@@ -2617,8 +2669,8 @@ function root(context, scope) {
 var claudeCodeAdapter = {
   kind: "scoped",
   name: "claude",
-  resolveDestination(context, scope, skillName) {
-    return resolveSkillDestination(root(context, scope), skillName);
+  resolveDestination(context, scope, skillName2) {
+    return resolveSkillDestination(root(context, scope), skillName2);
   },
   async doctor(context) {
     const checks = [await checkRuntime("claude", "claude", "Claude Code", context.executableSearchPath ?? process.env.PATH ?? "")];
@@ -2637,8 +2689,8 @@ function root2(context, scope) {
 var codexAdapter = {
   kind: "scoped",
   name: "codex",
-  resolveDestination(context, scope, skillName) {
-    return resolveSkillDestination(root2(context, scope), skillName);
+  resolveDestination(context, scope, skillName2) {
+    return resolveSkillDestination(root2(context, scope), skillName2);
   },
   async doctor(context) {
     const checks = [await checkRuntime("codex", "codex", "Codex", context.executableSearchPath ?? process.env.PATH ?? "")];
@@ -2657,8 +2709,8 @@ function root3(context, scope) {
 var agentsAdapter = {
   kind: "scoped",
   name: "agents",
-  resolveDestination(context, scope, skillName) {
-    return resolveSkillDestination(root3(context, scope), skillName);
+  resolveDestination(context, scope, skillName2) {
+    return resolveSkillDestination(root3(context, scope), skillName2);
   },
   async doctor(context) {
     const checks = [];
@@ -2742,8 +2794,8 @@ var genericAdapter = {
   resolveRoot(context, destinationRoot) {
     return resolveExplicitDestinationRoot(context.projectRoot, destinationRoot);
   },
-  resolveDestination(context, destinationRoot, skillName) {
-    return resolveSkillDestination(this.resolveRoot(context, destinationRoot), skillName);
+  resolveDestination(context, destinationRoot, skillName2) {
+    return resolveSkillDestination(this.resolveRoot(context, destinationRoot), skillName2);
   },
   async doctor(context, destinationRoot) {
     const lexicalRoot = this.resolveRoot(context, destinationRoot);
@@ -3171,17 +3223,17 @@ async function backupTarget(root4, promotionId, index, target, expectedBaseHash)
 
 // src/promotions/_targets.ts
 import { basename as basename5, dirname as dirname8, isAbsolute as isAbsolute3, join as join19, relative as relative3, resolve as resolve7 } from "node:path";
-async function resolvePromotionTargets(context, skillName, targets, promotionId) {
+async function resolvePromotionTargets(context, skillName2, targets, promotionId) {
   const resolvedTargets = await Promise.all(targets.map(async (request) => {
     const scoped = "scope" in request;
     let destination;
     if (scoped) {
-      const lexicalDestination = resolve7(request.adapter.resolveDestination(context, request.scope, skillName));
+      const lexicalDestination = resolve7(request.adapter.resolveDestination(context, request.scope, skillName2));
       destination = await canonicalizeFuturePath(lexicalDestination);
     } else {
       const lexicalRoot = resolve7(request.adapter.resolveRoot(context, request.destinationRoot));
       const physicalRoot = await canonicalizeGenericRoot(context, request.destinationRoot, lexicalRoot);
-      destination = resolveSkillDestination(physicalRoot, skillName);
+      destination = resolveSkillDestination(physicalRoot, skillName2);
     }
     const temporaryPrefix = `.${basename5(destination)}.skillloom-${promotionId}`;
     return {
@@ -3992,14 +4044,14 @@ async function verifyRolledBackState(promotion) {
   }
 }
 async function verifyBeforeState(destination, before) {
-  const exists2 = await pathExists(destination);
+  const exists3 = await pathExists(destination);
   if (before.kind === "absent") {
-    if (exists2) {
+    if (exists3) {
       throw new ValidationError(`Rollback expected destination to be absent: ${destination}`);
     }
     return;
   }
-  if (!exists2 || await hashSkillDirectory(destination, before.hash) !== before.hash) {
+  if (!exists3 || await hashSkillDirectory(destination, before.hash) !== before.hash) {
     throw new ValidationError(`Rollback restoration hash mismatch: ${destination}`);
   }
 }
@@ -4248,7 +4300,7 @@ function episodeSignature(episode) {
 function rejectedProposal(job, evidenceEventIds, hashes, reason, retryable) {
   return proposal(job, "rejected-update", "Rejected consolidation update", "The proposed consolidation was rejected and should not be repeated blindly.", reason, retryable, evidenceEventIds, hashes);
 }
-function proposal(job, kind, title, content, reason, retryable, evidenceEventIds, provenanceHashes) {
+function proposal(job, kind, title, content, reason, retryable, evidenceEventIds, provenanceHashes2) {
   const createdAt = (/* @__PURE__ */ new Date()).toISOString();
   return {
     proposalId: `proposal-${stableUuid(`${job.jobId}:${kind}:${reason}:${evidenceEventIds.join(",")}`)}`,
@@ -4259,7 +4311,7 @@ function proposal(job, kind, title, content, reason, retryable, evidenceEventIds
     reason,
     retryable,
     evidenceEventIds: [...evidenceEventIds],
-    provenanceHashes: [...provenanceHashes],
+    provenanceHashes: [...provenanceHashes2],
     createdAt
   };
 }
@@ -4680,14 +4732,224 @@ function listBrainMcpTools() {
   return definitions;
 }
 
+// src/hub/auth/errors.ts
+var HubAuthorizationError = class extends Error {
+  constructor(message2) {
+    super(message2);
+    this.name = "HubAuthorizationError";
+  }
+};
+
 // src/hub/auth/role-permissions.ts
+var roleOrder = ["reader", "contributor", "promoter", "admin"];
 var permissionsByRole = {
   reader: ["brain:read", "skill:read"],
   contributor: ["brain:read", "brain:capture", "brain:update", "brain:link", "skill:read", "skill:propose"],
   promoter: ["brain:read", "brain:capture", "brain:update", "brain:link", "skill:read", "skill:propose", "skill:publish"],
   admin: ["brain:read", "brain:capture", "brain:update", "brain:link", "skill:read", "skill:propose", "skill:publish", "hub:admin"]
 };
+var hubRoles = roleOrder;
 var hubPermissions = permissionsByRole.admin;
+function normalizeHubRoles(roles) {
+  const unique2 = new Set(roles);
+  return roleOrder.filter((role) => unique2.has(role));
+}
+function permissionsForHubRoles(roles) {
+  const grantedRoles = new Set(roles);
+  return hubPermissions.filter((permission) => roleOrder.some((role) => grantedRoles.has(role) && permissionsByRole[role].includes(permission)));
+}
+
+// src/hub/auth/schema.ts
+var capabilityNamePattern = /^[a-z0-9.-]+\/cap\/[a-z0-9._-]+$/;
+function parseHubAuthorizationPolicy(value) {
+  const record = requiredRecord(value, "Hub authorization policy");
+  requireExactKeys(record, ["actorRoles", "capabilityNamespaces"], "Hub authorization policy");
+  const actorRoles = parseActorRoles(record.actorRoles);
+  const capabilityNamespaces = parseCapabilityNamespaces(record.capabilityNamespaces);
+  return { actorRoles, capabilityNamespaces };
+}
+function parseHubAuthorizationIdentity(value) {
+  const record = requiredRecord(value, "Trusted identity");
+  const actorId = requiredString(record.actorId, "Trusted identity actorId");
+  const kind = record.kind;
+  if (kind !== "user" && kind !== "node") throw new HubAuthorizationError("Trusted identity kind is invalid");
+  if (!Array.isArray(record.appCapabilities)) throw new HubAuthorizationError("Trusted identity capabilities are invalid");
+  const appCapabilities = record.appCapabilities.map(parseCapability);
+  const displayName = optionalString2(record.displayName, "Trusted identity displayName");
+  const nodeId = optionalString2(record.nodeId, "Trusted identity nodeId");
+  const nodeName = optionalString2(record.nodeName, "Trusted identity nodeName");
+  return {
+    actorId,
+    kind,
+    appCapabilities,
+    ...displayName === void 0 ? {} : { displayName },
+    ...nodeId === void 0 ? {} : { nodeId },
+    ...nodeName === void 0 ? {} : { nodeName }
+  };
+}
+function parseHubPrincipal(value) {
+  const record = requiredRecord(value, "Hub principal");
+  requireExactKeys(record, ["actorId", "kind", "stableActor", "roles", "capabilityNamespaces"], "Hub principal");
+  const actorId = requiredString(record.actorId, "Hub principal actorId");
+  const kind = record.kind;
+  if (kind !== "user" && kind !== "node") throw new HubAuthorizationError("Hub principal kind is invalid");
+  if (typeof record.stableActor !== "boolean") throw new HubAuthorizationError("Hub principal stableActor is invalid");
+  if (!Array.isArray(record.roles) || !record.roles.every(isHubRole)) throw new HubAuthorizationError("Hub principal roles are invalid");
+  if (!Array.isArray(record.capabilityNamespaces) || !record.capabilityNamespaces.every(isCapabilityName)) {
+    throw new HubAuthorizationError("Hub principal capability namespaces are invalid");
+  }
+  return {
+    actorId,
+    kind,
+    stableActor: record.stableActor,
+    roles: [...record.roles],
+    capabilityNamespaces: [...record.capabilityNamespaces]
+  };
+}
+function parseHubAuthorizationContextData(value) {
+  const record = requiredRecord(value, "Hub authorization context");
+  requireExactKeys(record, ["principal", "permissions"], "Hub authorization context");
+  if (!Array.isArray(record.permissions) || !record.permissions.every(isHubPermission)) {
+    throw new HubAuthorizationError("Hub authorization context permissions are invalid");
+  }
+  return {
+    principal: parseHubPrincipal(record.principal),
+    permissions: [...new Set(record.permissions)]
+  };
+}
+function parseHubPermission(value) {
+  if (!isHubPermission(value)) throw new HubAuthorizationError("Hub permission is invalid");
+  return value;
+}
+function isHubRole(value) {
+  return typeof value === "string" && hubRoles.some((role) => role === value);
+}
+function isStableHubActor(identity) {
+  if (identity.kind === "user") return /^user:[^\s:][^\s]*$/.test(identity.actorId);
+  return identity.nodeId !== void 0 && identity.nodeId.length > 0 && identity.actorId === `node:${identity.nodeId}`;
+}
+function parseActorRoles(value) {
+  const record = requiredRecord(value, "Hub authorization actor roles");
+  return Object.fromEntries(Object.entries(record).map(([actorId, roles]) => {
+    if (!/^user:[^\s:][^\s]*$|^node:[^\s:][^\s]*$/.test(actorId)) {
+      throw new HubAuthorizationError("Hub authorization actor role key is invalid");
+    }
+    if (!Array.isArray(roles) || roles.length === 0 || !roles.every(isHubRole)) {
+      throw new HubAuthorizationError("Hub authorization actor roles are invalid");
+    }
+    return [actorId, [...roles]];
+  }));
+}
+function parseCapabilityNamespaces(value) {
+  if (!Array.isArray(value) || value.length === 0 || !value.every(isCapabilityName)) {
+    throw new HubAuthorizationError("Hub authorization capability namespaces are invalid");
+  }
+  return [...new Set(value)].sort();
+}
+function parseCapability(value) {
+  const record = requiredRecord(value, "Trusted identity capability");
+  requireExactKeys(record, ["name", "grants"], "Trusted identity capability");
+  const name = requiredString(record.name, "Trusted identity capability name");
+  if (!isCapabilityName(name)) throw new HubAuthorizationError("Trusted identity capability name is invalid");
+  if (!Array.isArray(record.grants)) throw new HubAuthorizationError("Trusted identity capability grants are invalid");
+  const grants = record.grants.map((grant) => parseJsonRecord(grant, "Trusted identity capability grant"));
+  return { name, grants };
+}
+function requiredRecord(value, field) {
+  if (!isRecord4(value)) throw new HubAuthorizationError(`${field} must be an object`);
+  return value;
+}
+function requireExactKeys(value, keys, field) {
+  if (Object.keys(value).some((key) => !keys.includes(key)) || keys.some((key) => !(key in value))) {
+    throw new HubAuthorizationError(`${field} fields are invalid`);
+  }
+}
+function requiredString(value, field) {
+  if (typeof value !== "string" || value.trim().length === 0) throw new HubAuthorizationError(`${field} must be a non-empty string`);
+  return value;
+}
+function optionalString2(value, field) {
+  if (value === void 0) return void 0;
+  return requiredString(value, field);
+}
+function isCapabilityName(value) {
+  return typeof value === "string" && capabilityNamePattern.test(value);
+}
+function isHubPermission(value) {
+  return typeof value === "string" && hubPermissions.some((permission) => permission === value);
+}
+function parseJsonRecord(value, field) {
+  const record = requiredRecord(value, field);
+  return parseJsonRecordAtDepth(record, field, 0);
+}
+function parseJsonRecordAtDepth(value, field, depth) {
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, parseJsonValue(item, field, depth)]));
+}
+function parseJsonValue(value, field, depth) {
+  if (depth > 8) throw new HubAuthorizationError(`${field} nesting is invalid`);
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) return value.map((item) => parseJsonValue(item, field, depth + 1));
+  if (isRecord4(value)) return parseJsonRecordAtDepth(value, field, depth + 1);
+  throw new HubAuthorizationError(`${field} JSON value is invalid`);
+}
+function isRecord4(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// src/hub/auth/service.ts
+function createHubAuthorizationService(policyInput) {
+  const policy = parseHubAuthorizationPolicy(policyInput);
+  return {
+    authorize(identityInput) {
+      const identity = parseHubAuthorizationIdentity(identityInput);
+      const principal = createPrincipal(identity, policy);
+      const permissions = permissionsForPrincipal(principal);
+      return createContext(principal, permissions);
+    }
+  };
+}
+function createPrincipal(identity, policy) {
+  const stableActor = isStableHubActor(identity);
+  const roles = normalizeHubRoles([
+    ...stableActor ? policy.actorRoles[identity.actorId] ?? [] : [],
+    ...capabilityRoles(identity.appCapabilities, policy.capabilityNamespaces)
+  ]);
+  return parseHubPrincipal({
+    actorId: identity.actorId,
+    kind: identity.kind,
+    stableActor,
+    roles,
+    capabilityNamespaces: identity.appCapabilities.map((capability2) => capability2.name).filter((name) => policy.capabilityNamespaces.includes(name))
+  });
+}
+function capabilityRoles(capabilities2, allowedNamespaces) {
+  return capabilities2.filter((capability2) => allowedNamespaces.includes(capability2.name)).flatMap((capability2) => capability2.grants.flatMap(parseGrantRoles));
+}
+function parseGrantRoles(grant) {
+  const keys = Object.keys(grant);
+  if (keys.length !== 1 || keys[0] !== "roles" || !Array.isArray(grant.roles) || grant.roles.length === 0 || !grant.roles.every(isHubRole)) {
+    return [];
+  }
+  return [...grant.roles];
+}
+function permissionsForPrincipal(principal) {
+  const permissions = permissionsForHubRoles(principal.roles);
+  return principal.stableActor ? permissions : permissions.filter((permission) => permission === "brain:read" || permission === "skill:read");
+}
+function createContext(principal, permissions) {
+  const data = parseHubAuthorizationContextData({ principal, permissions });
+  const allows = (permission) => data.permissions.includes(parseHubPermission(permission));
+  const context = {
+    ...data,
+    allows,
+    require(permission) {
+      if (!allows(permission)) throw new HubAuthorizationError(`Actor ${principal.actorId} lacks ${permission}`);
+      return context;
+    }
+  };
+  return context;
+}
 
 // src/hub/brain/errors.ts
 var BrainError = class extends Error {
@@ -4697,57 +4959,159 @@ var BrainError = class extends Error {
   }
   code;
 };
+var BrainValidationError = class extends BrainError {
+  constructor(message2) {
+    super(message2, "BRAIN_VALIDATION_ERROR");
+  }
+};
+var BrainNotFoundError = class extends BrainError {
+  constructor(artifactId2) {
+    super(`Brain artifact ${artifactId2} was not found`, "BRAIN_ARTIFACT_NOT_FOUND");
+    this.artifactId = artifactId2;
+  }
+  artifactId;
+};
+var BrainRevisionConflictError = class extends BrainError {
+  constructor(baseRevision, currentRevision, baseContentHash, currentContentHash) {
+    super(`Brain revision conflict: base ${baseRevision}, current ${currentRevision}`, "BRAIN_REVISION_CONFLICT");
+    this.baseRevision = baseRevision;
+    this.currentRevision = currentRevision;
+    this.baseContentHash = baseContentHash;
+    this.currentContentHash = currentContentHash;
+  }
+  baseRevision;
+  currentRevision;
+  baseContentHash;
+  currentContentHash;
+};
+var BrainIdempotencyConflictError = class extends BrainError {
+  constructor(actorId, requestId2) {
+    super(`Request ${requestId2} was already used by ${actorId} with a different payload`, "BRAIN_IDEMPOTENCY_CONFLICT");
+    this.actorId = actorId;
+    this.requestId = requestId2;
+  }
+  actorId;
+  requestId;
+};
+var BrainImmutableSourceError = class extends BrainError {
+  constructor(artifactId2) {
+    super(`Brain source artifact ${artifactId2} is immutable`, "BRAIN_IMMUTABLE_SOURCE");
+    this.artifactId = artifactId2;
+  }
+  artifactId;
+};
+var BrainSourceSensitivityMismatchError = class extends BrainError {
+  constructor(contentHash) {
+    super(`Brain source ${contentHash} already exists with a different sensitivity`, "BRAIN_SOURCE_SENSITIVITY_MISMATCH");
+    this.contentHash = contentHash;
+  }
+  contentHash;
+};
 var BrainStorageCorruptionError = class extends BrainError {
   constructor(message2) {
     super(message2, "BRAIN_STORAGE_CORRUPTION");
   }
 };
 
+// src/hub/brain/hash.ts
+import { createHash as createHash6 } from "node:crypto";
+function hashBrainContent(content) {
+  return `sha256:${createHash6("sha256").update(content).digest("hex")}`;
+}
+function hashBrainPayload(value) {
+  return `sha256:${createHash6("sha256").update(canonicalJson(value)).digest("hex")}`;
+}
+function deterministicBrainId(namespace, actorId, requestId2) {
+  const hex = createHash6("sha256").update(`${namespace}\0${actorId}\0${requestId2}`).digest("hex").slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20)}`;
+}
+function canonicalJson(value) {
+  return JSON.stringify(normalize(value));
+}
+function normalize(value) {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(normalize);
+  }
+  if (typeof value === "object") {
+    const normalized = {};
+    for (const key of Object.keys(value).sort()) {
+      const candidate2 = Object.getOwnPropertyDescriptor(value, key)?.value;
+      if (candidate2 !== void 0) {
+        normalized[key] = normalize(candidate2);
+      }
+    }
+    return normalized;
+  }
+  throw new TypeError(`Unsupported canonical JSON value: ${typeof value}`);
+}
+
 // src/hub/brain/artifact-details.ts
 var artifactLayers = new Set(brainArtifactLayers);
+function parseBrainArtifactLayer(value) {
+  if (value === "evidence" || value === "human-knowledge" || value === "agent-knowledge" || value === "workflow" || value === "skill" || value === "derived") {
+    return value;
+  }
+  throw new BrainStorageCorruptionError("Brain artifact layer is malformed");
+}
 function parseBrainSourceMetadata(value) {
-  if (!isRecord4(value) || typeof value.sourceId !== "string" || typeof value.capturedAt !== "string" || typeof value.contentHash !== "string" || optionalStringMalformed(value.uri) || optionalStringMalformed(value.title) || optionalStringMalformed(value.mediaType) || optionalStringMalformed(value.fetchedAt) || optionalStringMalformed(value.retrievedBy)) {
+  if (!isRecord5(value) || typeof value.sourceId !== "string" || typeof value.capturedAt !== "string" || typeof value.contentHash !== "string" || optionalStringMalformed(value.uri) || optionalStringMalformed(value.title) || optionalStringMalformed(value.mediaType) || optionalStringMalformed(value.fetchedAt) || optionalStringMalformed(value.retrievedBy)) {
     throw new BrainStorageCorruptionError("Brain source metadata is malformed");
   }
-  const uri = optionalString2(value.uri);
-  const title = optionalString2(value.title);
-  const mediaType = optionalString2(value.mediaType);
-  const fetchedAt = optionalString2(value.fetchedAt);
-  const retrievedBy = optionalString2(value.retrievedBy);
-  validateIsoTimestamp(value.capturedAt, "capturedAt");
-  if (fetchedAt !== void 0) validateIsoTimestamp(fetchedAt, "fetchedAt");
+  const uri = optionalString3(value.uri);
+  const title = optionalString3(value.title);
+  const mediaType = optionalString3(value.mediaType);
+  const fetchedAt = optionalString3(value.fetchedAt);
+  const retrievedBy = optionalString3(value.retrievedBy);
+  const capturedAt = canonicalIsoTimestamp(value.capturedAt, "capturedAt");
+  const canonicalFetchedAt = fetchedAt === void 0 ? void 0 : canonicalIsoTimestamp(fetchedAt, "fetchedAt");
   return {
     sourceId: value.sourceId,
-    capturedAt: value.capturedAt,
+    capturedAt,
     contentHash: value.contentHash,
     ...uri === void 0 ? {} : { uri },
     ...title === void 0 ? {} : { title },
     ...mediaType === void 0 ? {} : { mediaType },
-    ...fetchedAt === void 0 ? {} : { fetchedAt },
+    ...canonicalFetchedAt === void 0 ? {} : { fetchedAt: canonicalFetchedAt },
     ...retrievedBy === void 0 ? {} : { retrievedBy }
   };
 }
-function validateIsoTimestamp(value, field) {
-  if (Number.isNaN(Date.parse(value)) || new Date(value).toISOString() !== value) {
+function canonicalIsoTimestamp(value, field) {
+  const timestamp3 = Date.parse(value);
+  if (Number.isNaN(timestamp3)) {
     throw new BrainStorageCorruptionError(`Brain source metadata ${field} is malformed`);
   }
+  return new Date(timestamp3).toISOString();
 }
 function parseBrainArtifactDetails(value) {
-  if (!isRecord4(value)) {
+  if (!isRecord5(value)) {
     throw new BrainStorageCorruptionError("Brain artifact details are malformed");
   }
   if (Object.keys(value).length === 0 || value.kind === "none") return { kind: "none" };
-  if (value.kind === "knowledge" || isRecord4(value.knowledge)) return parseKnowledgeDetails(value.kind === "knowledge" ? value : value.knowledge);
-  if (value.kind === "episode" || isRecord4(value.episode)) return parseEpisodeDetails(value.kind === "episode" ? value : value.episode);
-  if (value.kind === "workflow" || isRecord4(value.workflow)) return parseWorkflowDetails(value.kind === "workflow" ? value : value.workflow);
-  if (value.kind === "feedback" || isRecord4(value.feedback)) return parseFeedbackDetails(value.kind === "feedback" ? value : value.feedback);
-  if (value.kind === "rejected-update" || isRecord4(value.rejectedUpdate)) {
+  if (value.kind === "knowledge" || isRecord5(value.knowledge)) return parseKnowledgeDetails(value.kind === "knowledge" ? value : value.knowledge);
+  if (value.kind === "episode" || isRecord5(value.episode)) return parseEpisodeDetails(value.kind === "episode" ? value : value.episode);
+  if (value.kind === "workflow" || isRecord5(value.workflow)) return parseWorkflowDetails(value.kind === "workflow" ? value : value.workflow);
+  if (value.kind === "feedback" || isRecord5(value.feedback)) return parseFeedbackDetails(value.kind === "feedback" ? value : value.feedback);
+  if (value.kind === "rejected-update" || isRecord5(value.rejectedUpdate)) {
     return parseRejectedUpdateDetails(value.kind === "rejected-update" ? value : value.rejectedUpdate);
   }
   throw new BrainStorageCorruptionError("Brain artifact details kind is malformed");
 }
+function validateBrainArtifactConsistency(type, layer, details) {
+  if (!artifactLayers.has(layer) || layer !== defaultBrainLayer(type)) {
+    throw new BrainStorageCorruptionError("Brain artifact layer does not match artifact type");
+  }
+  if (!detailKindAllowed(type, details.kind)) {
+    throw new BrainStorageCorruptionError("Brain artifact details do not match artifact type");
+  }
+}
 function parseKnowledgeDetails(value) {
-  if (!isRecord4(value) || !isKnowledgeStatus(value.status) || value.confidence !== void 0 && (typeof value.confidence !== "number" || value.confidence < 0 || value.confidence > 1) || value.entities !== void 0 && !isStringArray2(value.entities) || value.concepts !== void 0 && !isStringArray2(value.concepts)) {
+  if (!isRecord5(value) || !isKnowledgeStatus(value.status) || value.confidence !== void 0 && (typeof value.confidence !== "number" || value.confidence < 0 || value.confidence > 1) || value.entities !== void 0 && !isStringArray2(value.entities) || value.concepts !== void 0 && !isStringArray2(value.concepts)) {
     throw new BrainStorageCorruptionError("Brain knowledge details are malformed");
   }
   return {
@@ -4759,10 +5123,10 @@ function parseKnowledgeDetails(value) {
   };
 }
 function parseEpisodeDetails(value) {
-  if (!isRecord4(value) || typeof value.taskId !== "string" || typeof value.hostId !== "string" || typeof value.startedAt !== "string" || optionalStringMalformed(value.endedAt) || !isEpisodeOutcome(value.outcome)) {
+  if (!isRecord5(value) || typeof value.taskId !== "string" || typeof value.hostId !== "string" || typeof value.startedAt !== "string" || optionalStringMalformed(value.endedAt) || !isEpisodeOutcome(value.outcome)) {
     throw new BrainStorageCorruptionError("Brain episode details are malformed");
   }
-  const endedAt = optionalString2(value.endedAt);
+  const endedAt = optionalString3(value.endedAt);
   return {
     kind: "episode",
     taskId: value.taskId,
@@ -4773,10 +5137,10 @@ function parseEpisodeDetails(value) {
   };
 }
 function parseWorkflowDetails(value) {
-  if (!isRecord4(value) || typeof value.trigger !== "string" || !isStringArray2(value.steps) || optionalStringMalformed(value.verifier) || typeof value.promotable !== "boolean") {
+  if (!isRecord5(value) || typeof value.trigger !== "string" || !isStringArray2(value.steps) || optionalStringMalformed(value.verifier) || typeof value.promotable !== "boolean") {
     throw new BrainStorageCorruptionError("Brain workflow details are malformed");
   }
-  const verifier = optionalString2(value.verifier);
+  const verifier = optionalString3(value.verifier);
   return {
     kind: "workflow",
     trigger: value.trigger,
@@ -4786,7 +5150,7 @@ function parseWorkflowDetails(value) {
   };
 }
 function parseFeedbackDetails(value) {
-  if (!isRecord4(value) || typeof value.targetArtifactId !== "string" || !isFeedbackSignal(value.signal) || typeof value.reason !== "string") {
+  if (!isRecord5(value) || typeof value.targetArtifactId !== "string" || !isFeedbackSignal(value.signal) || typeof value.reason !== "string") {
     throw new BrainStorageCorruptionError("Brain feedback details are malformed");
   }
   return {
@@ -4797,7 +5161,7 @@ function parseFeedbackDetails(value) {
   };
 }
 function parseRejectedUpdateDetails(value) {
-  if (!isRecord4(value) || typeof value.targetArtifactId !== "string" || typeof value.rejectedAt !== "string" || typeof value.reason !== "string" || typeof value.retryable !== "boolean") {
+  if (!isRecord5(value) || typeof value.targetArtifactId !== "string" || typeof value.rejectedAt !== "string" || typeof value.reason !== "string" || typeof value.retryable !== "boolean") {
     throw new BrainStorageCorruptionError("Brain rejected update details are malformed");
   }
   return {
@@ -4807,6 +5171,16 @@ function parseRejectedUpdateDetails(value) {
     reason: value.reason,
     retryable: value.retryable
   };
+}
+function detailKindAllowed(type, kind) {
+  if (type === "bounded-episode") return kind === "episode";
+  if (type === "workflow") return kind === "workflow";
+  if (type === "feedback") return kind === "feedback";
+  if (type === "rejected-update") return kind === "rejected-update";
+  if (type === "fact" || type === "claim" || type === "entity" || type === "concept" || type === "decision" || type === "project") {
+    return kind === "none" || kind === "knowledge";
+  }
+  return kind === "none";
 }
 function isKnowledgeStatus(value) {
   return value === "draft" || value === "accepted" || value === "disputed" || value === "superseded";
@@ -4823,10 +5197,10 @@ function isStringArray2(value) {
 function optionalStringMalformed(value) {
   return value !== void 0 && typeof value !== "string";
 }
-function optionalString2(value) {
+function optionalString3(value) {
   return typeof value === "string" ? value : void 0;
 }
-function isRecord4(value) {
+function isRecord5(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -4834,6 +5208,1778 @@ function isRecord4(value) {
 var artifactTypes = new Set(brainArtifactTypes);
 var artifactLayers2 = new Set(brainArtifactLayers);
 var relationshipTypes = new Set(brainRelationshipTypes);
+var sensitivities = /* @__PURE__ */ new Set(["private", "tailnet", "restricted"]);
+var decimalPattern = /^(0|[1-9]\d*)$/;
+var identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,199}$/;
+var relationshipPattern = /^[a-z][a-z0-9-]{0,63}$/;
+var uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+var noneDetails = { kind: "none" };
+function validateActor(actor) {
+  validateIdentifier(actor.actorId, "actorId");
+}
+function validateRequestId(requestId2) {
+  validateIdentifier(requestId2, "requestId");
+}
+function validateArtifactId(artifactId2) {
+  if (!uuidPattern.test(artifactId2)) {
+    throw new BrainValidationError("artifactId must be a canonical lowercase UUID");
+  }
+}
+function validateRevision(revision, field = "revision") {
+  if (!decimalPattern.test(revision) || BigInt(revision) < 1n) {
+    throw new BrainValidationError(`${field} must be a positive decimal string`);
+  }
+}
+function validateTitle(title) {
+  if (title.trim().length === 0 || title.length > 500) {
+    throw new BrainValidationError("title must contain 1 to 500 characters");
+  }
+}
+function validateContent(content) {
+  if (content.length > 2e6) {
+    throw new BrainValidationError("content exceeds the 2000000 character limit");
+  }
+}
+function validateRelationship(relationship) {
+  if (!relationshipTypes.has(relationship) && !relationshipPattern.test(relationship)) {
+    throw new BrainValidationError("relationship must be a lowercase typed relationship");
+  }
+}
+function validateSearchQuery(query2) {
+  if (query2.trim().length === 0 || query2.length > 500) {
+    throw new BrainValidationError("search query must contain 1 to 500 characters");
+  }
+}
+function isBrainArtifactType(value) {
+  return typeof value === "string" && artifactTypes.has(value);
+}
+function isBrainSensitivity(value) {
+  return typeof value === "string" && sensitivities.has(value);
+}
+function isBrainArtifactLayer(value) {
+  return typeof value === "string" && artifactLayers2.has(value);
+}
+function validateBrainJsonRecord(value, field) {
+  if (!isJsonRecord(value)) {
+    throw new BrainValidationError(`${field} must contain only JSON values`);
+  }
+}
+function parseBrainArtifact(value) {
+  if (!isRecord6(value) || typeof value.id !== "string" || !isBrainArtifactType(value.type) || typeof value.path !== "string" || typeof value.revision !== "string" || typeof value.contentHash !== "string" || typeof value.title !== "string" || typeof value.content !== "string" || !isJsonRecord(value.frontmatter) || !isJsonRecord(value.provenance) || !isBrainSensitivity(value.sensitivity) || typeof value.createdAt !== "string" || typeof value.createdBy !== "string" || typeof value.updatedAt !== "string" || typeof value.updatedBy !== "string") {
+    throw new BrainStorageCorruptionError("Brain artifact metadata is malformed");
+  }
+  const type = value.type;
+  const layer = value.layer === void 0 ? defaultBrainLayer(type) : parseBrainArtifactLayer(value.layer);
+  const details = value.details === void 0 ? noneDetails : parseBrainArtifactDetails(value.details);
+  validateBrainArtifactConsistency(type, layer, details);
+  return {
+    id: value.id,
+    type,
+    layer,
+    path: value.path,
+    revision: value.revision,
+    contentHash: value.contentHash,
+    title: value.title,
+    content: value.content,
+    frontmatter: value.frontmatter,
+    provenance: value.provenance,
+    ...value.source === void 0 ? {} : { source: parseBrainSourceMetadata(value.source) },
+    details,
+    sensitivity: value.sensitivity,
+    createdAt: value.createdAt,
+    createdBy: value.createdBy,
+    updatedAt: value.updatedAt,
+    updatedBy: value.updatedBy
+  };
+}
+function parseBrainArtifactMetadata(value) {
+  return withoutContent(parseBrainArtifact({ ...recordOrThrow(value), content: "" }));
+}
+function parseBrainMutationResult(value) {
+  if (!isRecord6(value) || typeof value.kind !== "string" || typeof value.eventSequence !== "string") {
+    throw new BrainStorageCorruptionError("Brain mutation result is malformed");
+  }
+  if (value.kind === "artifact") {
+    return { kind: "artifact", artifact: parseBrainArtifactMetadata(value.artifact), eventSequence: value.eventSequence };
+  }
+  if (value.kind === "link") {
+    return { kind: "link", link: parseBrainLink(value.link), eventSequence: value.eventSequence };
+  }
+  throw new BrainStorageCorruptionError("Brain mutation result kind is malformed");
+}
+function parseBrainAuditEvent(value) {
+  if (!isRecord6(value) || typeof value.sequence !== "string" || !decimalPattern.test(value.sequence) || typeof value.eventId !== "string" || !isAuditKind(value.kind) || !isRecord6(value.actor) || typeof value.actor.actorId !== "string" || !isRecord6(value.resource) || !isResourceKind(value.resource.kind) || typeof value.resource.id !== "string" || typeof value.requestId !== "string" || typeof value.payloadHash !== "string" || typeof value.createdAt !== "string") {
+    throw new BrainStorageCorruptionError("Brain audit event is malformed");
+  }
+  return {
+    sequence: value.sequence,
+    eventId: value.eventId,
+    kind: value.kind,
+    actor: { actorId: value.actor.actorId },
+    resource: {
+      kind: value.resource.kind,
+      id: value.resource.id,
+      ...typeof value.resource.revision === "string" ? { revision: value.resource.revision } : {}
+    },
+    requestId: value.requestId,
+    payloadHash: value.payloadHash,
+    result: parseBrainMutationResult(value.result),
+    createdAt: value.createdAt
+  };
+}
+function parseBrainPendingOperation(value) {
+  if (!isRecord6(value) || value.version !== 1 || typeof value.operationId !== "string" || !isAction(value.action) || !isRecord6(value.actor) || typeof value.actor.actorId !== "string" || typeof value.requestId !== "string" || typeof value.payloadHash !== "string" || !isRecord6(value.event) || typeof value.createdAt !== "string") {
+    throw new BrainStorageCorruptionError("Pending brain operation is malformed");
+  }
+  const event = parseAuditDraft(value.event);
+  if (value.action === "link") {
+    return {
+      version: 1,
+      operationId: value.operationId,
+      action: "link",
+      actor: { actorId: value.actor.actorId },
+      requestId: value.requestId,
+      payloadHash: value.payloadHash,
+      link: parseBrainLink(value.link),
+      event,
+      createdAt: value.createdAt
+    };
+  }
+  return {
+    version: 1,
+    operationId: value.operationId,
+    action: value.action,
+    actor: { actorId: value.actor.actorId },
+    requestId: value.requestId,
+    payloadHash: value.payloadHash,
+    artifact: parseBrainArtifact(value.artifact),
+    ...parseArtifactBase(value.base) ? { base: parseArtifactBase(value.base) } : {},
+    event,
+    createdAt: value.createdAt
+  };
+}
+function parseArtifactBase(value) {
+  if (value === void 0) {
+    return void 0;
+  }
+  if (!isRecord6(value) || typeof value.revision !== "string" || typeof value.contentHash !== "string") {
+    throw new BrainStorageCorruptionError("Pending brain base revision is malformed");
+  }
+  return { revision: value.revision, contentHash: value.contentHash };
+}
+function withoutContent(artifact) {
+  return {
+    id: artifact.id,
+    type: artifact.type,
+    layer: artifact.layer,
+    path: artifact.path,
+    revision: artifact.revision,
+    contentHash: artifact.contentHash,
+    title: artifact.title,
+    frontmatter: artifact.frontmatter,
+    provenance: artifact.provenance,
+    ...artifact.source === void 0 ? {} : { source: artifact.source },
+    details: artifact.details,
+    sensitivity: artifact.sensitivity,
+    createdAt: artifact.createdAt,
+    createdBy: artifact.createdBy,
+    updatedAt: artifact.updatedAt,
+    updatedBy: artifact.updatedBy
+  };
+}
+function parseBrainLink(value) {
+  if (!isRecord6(value) || typeof value.id !== "string" || typeof value.sourceArtifactId !== "string" || typeof value.targetArtifactId !== "string" || typeof value.relationship !== "string" || typeof value.createdAt !== "string" || typeof value.createdBy !== "string") {
+    throw new BrainStorageCorruptionError("Brain link is malformed");
+  }
+  validateRelationship(value.relationship);
+  return {
+    id: value.id,
+    sourceArtifactId: value.sourceArtifactId,
+    targetArtifactId: value.targetArtifactId,
+    relationship: value.relationship,
+    createdAt: value.createdAt,
+    createdBy: value.createdBy
+  };
+}
+function parseAuditDraft(value) {
+  const parsed = parseBrainAuditEvent({ ...value, sequence: "1", result: draftResult(value) });
+  return {
+    eventId: parsed.eventId,
+    kind: parsed.kind,
+    actor: parsed.actor,
+    resource: parsed.resource,
+    requestId: parsed.requestId,
+    payloadHash: parsed.payloadHash,
+    createdAt: parsed.createdAt
+  };
+}
+function draftResult(value) {
+  const resource = isRecord6(value.resource) ? value.resource : {};
+  if (resource.kind === "brain-link") {
+    return {
+      kind: "link",
+      link: {
+        id: "00000000-0000-0000-0000-000000000000",
+        sourceArtifactId: "00000000-0000-0000-0000-000000000000",
+        targetArtifactId: "00000000-0000-0000-0000-000000000000",
+        relationship: "related-to",
+        createdAt: (/* @__PURE__ */ new Date(0)).toISOString(),
+        createdBy: "system"
+      },
+      eventSequence: "1"
+    };
+  }
+  return {
+    kind: "artifact",
+    artifact: {
+      id: "00000000-0000-0000-0000-000000000000",
+      type: "note",
+      layer: "human-knowledge",
+      path: "vault/inbox/00000000-0000-0000-0000-000000000000.md",
+      revision: "1",
+      contentHash: "sha256:0",
+      title: "pending",
+      frontmatter: {},
+      provenance: {},
+      details: { kind: "none" },
+      sensitivity: "private",
+      createdAt: (/* @__PURE__ */ new Date(0)).toISOString(),
+      createdBy: "system",
+      updatedAt: (/* @__PURE__ */ new Date(0)).toISOString(),
+      updatedBy: "system"
+    },
+    eventSequence: "1"
+  };
+}
+function validateIdentifier(value, field) {
+  if (!identifierPattern.test(value)) {
+    throw new BrainValidationError(`${field} contains unsupported characters or length`);
+  }
+}
+function isAction(value) {
+  return value === "capture" || value === "update" || value === "link";
+}
+function isAuditKind(value) {
+  return value === "brain.captured" || value === "brain.updated" || value === "brain.linked";
+}
+function isResourceKind(value) {
+  return value === "brain-artifact" || value === "brain-link";
+}
+function isJsonRecord(value) {
+  if (!isRecord6(value)) {
+    return false;
+  }
+  return Object.values(value).every(isJsonValue);
+}
+function isJsonValue(value) {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return true;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+  if (Array.isArray(value)) {
+    return value.every(isJsonValue);
+  }
+  return isJsonRecord(value);
+}
+function isRecord6(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function recordOrThrow(value) {
+  if (!isRecord6(value)) {
+    throw new BrainStorageCorruptionError("Expected a JSON object");
+  }
+  return value;
+}
+
+// src/hub/brain/layout.ts
+import { join as join24 } from "node:path";
+function brainLayout(root4) {
+  const vault = join24(root4, "vault");
+  const operations = join24(root4, "operations");
+  const index = join24(root4, "index");
+  const projections = join24(root4, "projections");
+  const obsidianVault = join24(projections, "obsidian-vault");
+  const obsidianProjection = join24(obsidianVault, "Library");
+  const obsidianProjectionStaging = join24(projections, "obsidian-staging");
+  const obsidianAuthoring = join24(root4, "authoring");
+  const obsidianAuthoringState = join24(operations, "obsidian-authoring");
+  return {
+    root: root4,
+    vault,
+    inbox: join24(vault, "inbox"),
+    curated: join24(vault, "curated"),
+    operations,
+    staging: join24(operations, "staging"),
+    pending: join24(operations, "pending"),
+    humanInbox: join24(operations, "human-inbox"),
+    humanInboxCheckpoints: join24(operations, "human-inbox", "checkpoints.json"),
+    obsidianAuthoring,
+    obsidianAuthoringInbox: join24(obsidianAuthoring, "Inbox"),
+    obsidianAuthoringCurated: join24(obsidianAuthoring, "Curated"),
+    obsidianAuthoringEvidence: join24(obsidianAuthoring, "Evidence"),
+    obsidianAuthoringConflicts: join24(obsidianAuthoring, "Conflicts"),
+    obsidianAuthoringCheckpoints: join24(obsidianAuthoringState, "checkpoints.json"),
+    projections,
+    obsidianVault,
+    obsidianProjection,
+    obsidianProjectionNext: join24(obsidianProjectionStaging, "next"),
+    obsidianProjectionPrevious: join24(obsidianProjectionStaging, "previous"),
+    obsidianBases: join24(root4, "obsidian-ui", "Bases"),
+    index,
+    audit: join24(index, "audit.jsonl"),
+    sqlite: join24(index, "brain.sqlite")
+  };
+}
+
+// src/hub/brain/health.ts
+async function lintBrainHealth(source, audit, index, checkedAt) {
+  const artifacts = await source.list();
+  const events = await audit.readAll();
+  const snapshot = await index.healthSnapshot();
+  const canonicalArtifactIds = new Set(artifacts.map((artifact) => artifact.id));
+  const indexedArtifactIds = new Set(snapshot.artifactIds);
+  const canonicalLinks = linkIds(events);
+  const indexedLinks = new Set(snapshot.linkIds);
+  const indexedLinkRecords = await collectIndexedLinks(index, /* @__PURE__ */ new Set([...canonicalArtifactIds, ...indexedArtifactIds]));
+  const issues = [];
+  for (const artifactId2 of sorted(canonicalArtifactIds)) {
+    if (!indexedArtifactIds.has(artifactId2)) issues.push({ code: "canonical-artifact-missing-from-index", severity: "error", detail: "Canonical artifact is absent from the derived index", artifactId: artifactId2 });
+  }
+  for (const artifactId2 of sorted(indexedArtifactIds)) {
+    if (!canonicalArtifactIds.has(artifactId2)) issues.push({ code: "stale-index-artifact", severity: "error", detail: "Derived index contains an artifact absent from the canonical store", artifactId: artifactId2 });
+  }
+  for (const event of events) {
+    if (!snapshot.eventSequences.includes(event.sequence)) issues.push({ code: "audit-event-missing-from-index", severity: "error", detail: "Audit event is absent from the derived index", eventSequence: event.sequence });
+    if (!snapshot.idempotencyKeys.includes(`${event.actor.actorId}\0${event.requestId}`)) issues.push({ code: "idempotency-missing-from-index", severity: "error", detail: "Audit event lacks a derived idempotency record", eventSequence: event.sequence });
+    if (event.result.kind === "link") pushOrphanLinkIssues(issues, canonicalArtifactIds, event.result.link, "orphan-audit-link-endpoint");
+  }
+  for (const eventSequence of snapshot.eventSequences) {
+    if (!events.some((event) => event.sequence === eventSequence)) issues.push({ code: "stale-index-audit-event", severity: "error", detail: "Derived index contains an audit event absent from the audit log", eventSequence });
+  }
+  for (const linkId of [...canonicalLinks.keys()].sort()) {
+    if (!indexedLinks.has(linkId)) issues.push({ code: "audit-link-missing-from-index", severity: "error", detail: "Audit link result is absent from the derived index", linkId });
+  }
+  for (const linkId of sorted(indexedLinks)) {
+    if (!canonicalLinks.has(linkId)) issues.push({ code: "stale-index-link", severity: "warning", detail: "Derived index contains a link absent from the audit log", linkId });
+  }
+  for (const link of indexedLinkRecords) {
+    pushOrphanLinkIssues(issues, canonicalArtifactIds, link, "orphan-index-link-endpoint");
+  }
+  return {
+    status: issues.length === 0 ? "ok" : "degraded",
+    checkedAt,
+    canonicalArtifacts: canonicalArtifactIds.size,
+    indexedArtifacts: indexedArtifactIds.size,
+    auditEvents: events.length,
+    indexedAuditEvents: snapshot.eventSequences.length,
+    indexedLinks: snapshot.linkIds.length,
+    unresolvedGaps: artifacts.filter((artifact) => artifact.type === "health-report" && artifact.frontmatter.gap === true).length,
+    contradictions: [...canonicalLinks.values()].filter((link) => link.relationship === "contradicts").length,
+    recoveredIndex: false,
+    issues,
+    recommendations: issues.length === 0 ? [] : ["rebuild-derived-index-from-canonical-store-and-audit-log"]
+  };
+}
+function linkIds(events) {
+  return new Map(events.flatMap((event) => event.result.kind === "link" ? [[event.result.link.id, event.result.link]] : []));
+}
+async function collectIndexedLinks(index, artifactIds) {
+  const links = /* @__PURE__ */ new Map();
+  for (const artifactId2 of sorted(artifactIds)) {
+    for (const link of await index.links(artifactId2)) {
+      links.set(link.id, link);
+    }
+  }
+  return [...links.values()].sort((left, right) => left.id.localeCompare(right.id));
+}
+function pushOrphanLinkIssues(issues, artifactIds, link, code) {
+  if (!artifactIds.has(link.sourceArtifactId) || !artifactIds.has(link.targetArtifactId)) {
+    issues.push({ code, severity: "error", detail: "Brain link points at a missing canonical artifact", linkId: link.id });
+  }
+}
+function sorted(values) {
+  return [...values].sort();
+}
+
+// src/hub/brain/retrieval-scoring.ts
+function scoreBrainArtifact(artifact, query2, graphDistance) {
+  const terms = queryTerms(query2);
+  const title = artifact.title.toLowerCase();
+  const content = artifact.content.toLowerCase();
+  const metadata2 = JSON.stringify({
+    type: artifact.type,
+    layer: artifact.layer,
+    provenance: artifact.provenance,
+    source: artifact.source ?? null,
+    details: artifact.details
+  }).toLowerCase();
+  const reasons = [];
+  let score = 0;
+  for (const term of terms) {
+    if (title.includes(term)) score += addReason(reasons, "title", 12, `title matches ${term}`);
+    if (content.includes(term)) score += addReason(reasons, "content", 4, `content matches ${term}`);
+    if (metadata2.includes(term)) score += addReason(reasons, "metadata", 3, `metadata matches ${term}`);
+  }
+  if (title.includes(query2.trim().toLowerCase())) score += addReason(reasons, "title", 10, "title matches full query");
+  if (graphDistance > 0) score += addReason(reasons, "graph", graphDistance === 1 ? 6 : 3, `linked at distance ${graphDistance}`);
+  if (terms.length > 0 && score > 0) score += addReason(reasons, "freshness", freshnessWeight(artifact.updatedAt), "updated timestamp tie-breaker");
+  return { artifact, score: Number(score.toFixed(3)), reasons };
+}
+function queryTerms(query2) {
+  return [...new Set((query2.toLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? []).filter((term) => term.length > 0))].sort();
+}
+function addReason(reasons, kind, weight, detail) {
+  reasons.push({ kind, weight, detail });
+  return weight;
+}
+function freshnessWeight(updatedAt) {
+  const parsed = Date.parse(updatedAt);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(0.999, Math.max(0, parsed / 1e13));
+}
+
+// src/hub/brain/retrieval-service.ts
+var tierConfig = {
+  quick: { seedLimit: 25, graphDepth: 0, candidateLimit: 25, resultLimit: 10, hotLimit: 4, hotBytes: 1200 },
+  standard: { seedLimit: 50, graphDepth: 1, candidateLimit: 80, resultLimit: 20, hotLimit: 6, hotBytes: 2400 },
+  deep: { seedLimit: 90, graphDepth: 2, candidateLimit: 140, resultLimit: 40, hotLimit: 10, hotBytes: 4e3 }
+};
+var BrainRetrievalService = class {
+  constructor(source, audit, index, clock) {
+    this.source = source;
+    this.audit = audit;
+    this.index = index;
+    this.clock = clock;
+  }
+  source;
+  audit;
+  index;
+  clock;
+  async retrieve(input) {
+    const repaired = await this.repairDerivedIndexIfDegraded();
+    const retry = await this.withDerivedIndexRetry(() => this.retrieveOnce(input));
+    return { ...retry.value, recoveredIndex: repaired || retry.recovered || retry.value.recoveredIndex };
+  }
+  async health() {
+    const repaired = await this.repairDerivedIndexIfDegraded();
+    const retry = await this.withDerivedIndexRetry(() => lintBrainHealth(this.source, this.audit, this.index, this.clock().toISOString()));
+    return { ...retry.value, recoveredIndex: repaired || retry.recovered || retry.value.recoveredIndex };
+  }
+  async retrieveOnce(input) {
+    const tier = input.tier ?? "quick";
+    const config = tierConfig[tier];
+    const requestedLimit = input.limit ?? config.resultLimit;
+    const limit = Math.min(config.resultLimit, Math.max(1, Number.isInteger(requestedLimit) ? requestedLimit : config.resultLimit));
+    const artifacts = await this.source.list();
+    const byId = new Map(artifacts.map((artifact) => [artifact.id, artifact]));
+    const seeds = await this.index.search(input.query, void 0, config.seedLimit);
+    const distances = await this.candidateDistances(seeds.map((seed) => seed.id), config, byId);
+    const filters = input.filters ?? {};
+    const scoredResults = [...distances.entries()].flatMap(([artifactId2, distance]) => {
+      const artifact = byId.get(artifactId2);
+      if (!artifact || !matchesFilters(artifact, filters)) return [];
+      const scored = scoreBrainArtifact(artifact, input.query, distance);
+      if (scored.score <= 0) return [];
+      return [this.item(scored.artifact, scored.score, scored.reasons, distance)];
+    }).sort(compareItems).slice(0, limit);
+    const results = await decorateBrainRetrievalItems(scoredResults, byId, this.index);
+    const health = tier === "deep" ? await lintBrainHealth(this.source, this.audit, this.index, this.clock().toISOString()) : void 0;
+    return {
+      tier,
+      query: input.query,
+      filters,
+      results,
+      hotContext: hotContext(results, byId, config),
+      recoveredIndex: false,
+      ...health === void 0 ? {} : { health }
+    };
+  }
+  async candidateDistances(seedIds, config, byId) {
+    const distances = /* @__PURE__ */ new Map();
+    const queue = seedIds.filter((id) => byId.has(id)).map((id) => ({ id, distance: 0 }));
+    for (const id of seedIds) {
+      if (byId.has(id)) distances.set(id, 0);
+    }
+    for (let cursor = 0; cursor < queue.length && distances.size < config.candidateLimit; cursor += 1) {
+      const current = queue[cursor];
+      if (!current || current.distance >= config.graphDepth) continue;
+      const links = await this.index.links(current.id);
+      for (const link of links) {
+        const nextId = link.sourceArtifactId === current.id ? link.targetArtifactId : link.sourceArtifactId;
+        if (!byId.has(nextId) || distances.has(nextId)) continue;
+        distances.set(nextId, current.distance + 1);
+        queue.push({ id: nextId, distance: current.distance + 1 });
+        if (distances.size >= config.candidateLimit) break;
+      }
+    }
+    return distances;
+  }
+  item(artifact, score, reasons, graphDistance) {
+    return {
+      ...withoutContent(artifact),
+      excerpt: excerpt(artifact.content),
+      score,
+      graphDistance,
+      reasons,
+      decorations: { contradictions: [], gaps: [] }
+    };
+  }
+  async withDerivedIndexRetry(fn) {
+    try {
+      return { value: await fn(), recovered: false };
+    } catch (error) {
+      await this.rebuildDerivedIndex();
+      try {
+        return { value: await fn(), recovered: true };
+      } catch {
+        throw error;
+      }
+    }
+  }
+  async repairDerivedIndexIfDegraded() {
+    try {
+      const report = await lintBrainHealth(this.source, this.audit, this.index, this.clock().toISOString());
+      if (report.status === "ok") return false;
+    } catch {
+      await this.rebuildDerivedIndex();
+      return true;
+    }
+    await this.rebuildDerivedIndex();
+    return true;
+  }
+  async rebuildDerivedIndex() {
+    await this.index.rebuild(await this.source.list(), await this.audit.readAll());
+  }
+};
+function matchesFilters(artifact, filters) {
+  return (filters.types === void 0 || filters.types.includes(artifact.type)) && (filters.layers === void 0 || filters.layers.includes(artifact.layer)) && (filters.sensitivities === void 0 || filters.sensitivities.includes(artifact.sensitivity)) && (filters.statuses === void 0 || artifact.details.kind === "knowledge" && filters.statuses.includes(artifact.details.status)) && (filters.updatedAfter === void 0 || artifact.updatedAt >= filters.updatedAfter) && (filters.updatedBefore === void 0 || artifact.updatedAt <= filters.updatedBefore) && (filters.hasSource === void 0 || artifact.source !== void 0 === filters.hasSource);
+}
+function compareItems(left, right) {
+  return right.score - left.score || left.graphDistance - right.graphDistance || right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id);
+}
+function hotContext(results, byId, config) {
+  const items = [];
+  let remaining = config.hotBytes;
+  for (const result of results.slice(0, config.hotLimit)) {
+    const artifact = byId.get(result.id);
+    if (!artifact || remaining <= 0) continue;
+    const content = clip(artifact.content, Math.min(480, remaining));
+    remaining -= content.length;
+    items.push({ artifactId: result.id, type: result.type, title: result.title, score: result.score, excerpt: result.excerpt, content });
+  }
+  return items;
+}
+async function decorateBrainRetrievalItems(results, byId, index) {
+  const decorated = [];
+  for (const result of results) {
+    const related = await index.links(result.id);
+    decorated.push({
+      ...result,
+      decorations: {
+        contradictions: relatedDecorations(result.id, related, byId, "contradicts"),
+        gaps: [
+          ...relatedDecorations(result.id, related, byId, "fills-gap"),
+          ...relatedDecorations(result.id, related, byId, "identifies-gap")
+        ].sort((left, right) => left.artifact.id.localeCompare(right.artifact.id))
+      }
+    });
+  }
+  return decorated;
+}
+function relatedDecorations(artifactId2, links, byId, relationship) {
+  return links.filter((link) => link.relationship === relationship).flatMap((link) => {
+    const relatedId = link.sourceArtifactId === artifactId2 ? link.targetArtifactId : link.sourceArtifactId;
+    const artifact = byId.get(relatedId);
+    return artifact === void 0 ? [] : [{ artifact: withoutContent(artifact), relationship: relationship === "identifies-gap" ? "fills-gap" : relationship, link }];
+  }).sort((left, right) => left.artifact.id.localeCompare(right.artifact.id));
+}
+function excerpt(content) {
+  return clip(content.replace(/\s+/g, " ").trim(), 220);
+}
+function clip(value, limit) {
+  return value.length <= limit ? value : `${value.slice(0, Math.max(0, limit - 3))}...`;
+}
+
+// src/hub/brain/audit-log.ts
+import { mkdir as mkdir12, open as open4, readFile as readFile11 } from "node:fs/promises";
+import { dirname as dirname12 } from "node:path";
+var JsonlBrainAuditLog = class {
+  path;
+  queue = Promise.resolve();
+  constructor(root4) {
+    this.path = brainLayout(root4).audit;
+  }
+  async initialize() {
+    await mkdir12(dirname12(this.path), { recursive: true });
+  }
+  async append(event, result) {
+    return await this.enqueue(async () => {
+      const events = await this.readAll();
+      const existing = events.find((candidate2) => candidate2.eventId === event.eventId);
+      if (existing) {
+        if (existing.payloadHash !== event.payloadHash || existing.actor.actorId !== event.actor.actorId || existing.requestId !== event.requestId) {
+          throw new BrainStorageCorruptionError(`Audit event ${event.eventId} conflicts with an existing event`);
+        }
+        return existing;
+      }
+      const sequence4 = (events.length === 0 ? 1n : BigInt(events.at(-1)?.sequence ?? "0") + 1n).toString();
+      const record = {
+        ...event,
+        sequence: sequence4,
+        result: { ...result, eventSequence: sequence4 }
+      };
+      const handle = await open4(this.path, "a", 384);
+      try {
+        await handle.appendFile(`${JSON.stringify(record)}
+`);
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      await syncDirectory(dirname12(this.path));
+      return record;
+    });
+  }
+  async readAll() {
+    let text4;
+    try {
+      text4 = await readFile11(this.path, "utf8");
+    } catch (error) {
+      if (errorCode7(error) === "ENOENT") {
+        return [];
+      }
+      throw error;
+    }
+    if (text4.length === 0) {
+      return [];
+    }
+    if (!text4.endsWith("\n")) {
+      throw new BrainStorageCorruptionError("Brain audit log has a truncated trailing record");
+    }
+    const events = text4.slice(0, -1).split("\n").map((line) => parseBrainAuditEvent(JSON.parse(line)));
+    for (const [index, event] of events.entries()) {
+      if (BigInt(event.sequence) !== BigInt(index + 1)) {
+        throw new BrainStorageCorruptionError(`Brain audit sequence mismatch at line ${index + 1}`);
+      }
+    }
+    return events;
+  }
+  async latestSequence() {
+    return (await this.readAll()).at(-1)?.sequence ?? "0";
+  }
+  async enqueue(fn) {
+    const previous = this.queue;
+    let release;
+    this.queue = new Promise((resolve11) => {
+      release = resolve11;
+    });
+    await previous.catch(() => void 0);
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+};
+function errorCode7(error) {
+  return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string" ? error.code : void 0;
+}
+
+// src/hub/brain/file-source-store.ts
+import { access as access3, mkdir as mkdir13, readFile as readFile12, readdir as readdir7, rename as rename6, rm as rm9 } from "node:fs/promises";
+import { dirname as dirname13, join as join25, relative as relative4, resolve as resolve8, sep as sep2 } from "node:path";
+
+// src/hub/brain/markdown.ts
+var delimiter2 = "---\n";
+function serializeBrainMarkdown(artifact) {
+  const { content, ...metadata2 } = artifact;
+  return `${delimiter2}${JSON.stringify(metadata2)}
+${delimiter2}${content}`;
+}
+function parseBrainMarkdown(text4) {
+  if (!text4.startsWith(delimiter2)) {
+    return null;
+  }
+  const end = text4.indexOf(`
+${delimiter2}`, delimiter2.length);
+  if (end === -1) {
+    throw new BrainStorageCorruptionError("Brain Markdown frontmatter is unterminated");
+  }
+  let metadata2;
+  try {
+    metadata2 = JSON.parse(text4.slice(delimiter2.length, end));
+  } catch {
+    throw new BrainStorageCorruptionError("Brain Markdown frontmatter is malformed");
+  }
+  const content = text4.slice(end + delimiter2.length + 1);
+  const artifact = parseBrainArtifact({ ...recordMetadata(metadata2), content });
+  return { ...artifact, contentHash: hashBrainContent(content) };
+}
+function recordMetadata(value) {
+  if (!isRecord7(value)) {
+    throw new BrainStorageCorruptionError("Brain Markdown frontmatter must be an object");
+  }
+  return value;
+}
+function isRecord7(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// src/hub/brain/file-source-store.ts
+var FileBrainSourceStore = class {
+  constructor(root4) {
+    this.root = root4;
+    this.layout = brainLayout(root4);
+  }
+  root;
+  layout;
+  paths = /* @__PURE__ */ new Map();
+  async initialize() {
+    await Promise.all([
+      mkdir13(this.layout.inbox, { recursive: true }),
+      mkdir13(this.layout.curated, { recursive: true }),
+      mkdir13(this.layout.staging, { recursive: true })
+    ]);
+    await this.list();
+  }
+  async stage(operationId, artifact) {
+    validateArtifactId(operationId);
+    this.resolveArtifactPath(artifact);
+    await atomicWriteFile(this.stagedPath(operationId), serializeBrainMarkdown(artifact), { mode: 384 });
+  }
+  async commit(operationId, artifact, base) {
+    validateArtifactId(operationId);
+    const finalPath = this.resolveArtifactPath(artifact);
+    const committed = await this.readPath(finalPath);
+    if (committed && committed.id === artifact.id && committed.revision === artifact.revision && committed.contentHash === artifact.contentHash) {
+      await this.cleanupStage(operationId);
+      this.paths.set(artifact.id, finalPath);
+      return;
+    }
+    if (!await this.hasStaged(operationId)) {
+      throw new BrainStorageCorruptionError(`Pending operation ${operationId} has neither staged nor committed content`);
+    }
+    if (base && (!committed || committed.revision !== base.revision || committed.contentHash !== base.contentHash)) {
+      throw new BrainRevisionConflictError(
+        base.revision,
+        committed?.revision ?? "0",
+        base.contentHash,
+        committed?.contentHash
+      );
+    }
+    if (!base && committed) {
+      throw new BrainStorageCorruptionError(`Capture target ${artifact.id} already exists`);
+    }
+    await mkdir13(dirname13(finalPath), { recursive: true });
+    await rename6(this.stagedPath(operationId), finalPath);
+    await syncDirectory(dirname13(finalPath));
+    this.paths.set(artifact.id, finalPath);
+  }
+  async read(artifactId2) {
+    validateArtifactId(artifactId2);
+    let path = this.paths.get(artifactId2);
+    if (!path) {
+      await this.list();
+      path = this.paths.get(artifactId2);
+    }
+    return path ? await this.readPath(path) : null;
+  }
+  async list() {
+    const artifacts = [];
+    this.paths.clear();
+    for (const directory of [this.layout.inbox, this.layout.curated]) {
+      for (const path of await markdownFiles(directory)) {
+        const artifact = await this.readPath(path);
+        if (!artifact) {
+          continue;
+        }
+        const expectedPath = relative4(this.root, path).split(sep2).join("/");
+        if (artifact.path !== expectedPath) {
+          throw new BrainStorageCorruptionError(`Artifact ${artifact.id} path metadata does not match ${expectedPath}`);
+        }
+        if (this.paths.has(artifact.id)) {
+          throw new BrainStorageCorruptionError(`Duplicate brain artifact ID ${artifact.id}`);
+        }
+        this.paths.set(artifact.id, path);
+        artifacts.push(artifact);
+      }
+    }
+    return artifacts;
+  }
+  async hasStaged(operationId) {
+    try {
+      await access3(this.stagedPath(operationId));
+      return true;
+    } catch (error) {
+      if (errorCode8(error) === "ENOENT") {
+        return false;
+      }
+      throw error;
+    }
+  }
+  async cleanupStage(operationId) {
+    await rm9(this.stagedPath(operationId), { force: true });
+    await syncDirectory(this.layout.staging);
+  }
+  async cleanupOrphanStages(activeOperationIds) {
+    for (const entry of await readdir7(this.layout.staging, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".md")) {
+        continue;
+      }
+      const operationId = entry.name.slice(0, -3);
+      if (!activeOperationIds.has(operationId)) {
+        await rm9(join25(this.layout.staging, entry.name), { force: true });
+      }
+    }
+    await syncDirectory(this.layout.staging);
+  }
+  stagedPath(operationId) {
+    validateArtifactId(operationId);
+    return join25(this.layout.staging, `${operationId}.md`);
+  }
+  resolveArtifactPath(artifact) {
+    validateArtifactId(artifact.id);
+    const resolved = resolve8(this.root, artifact.path);
+    const rootPrefix = `${resolve8(this.root)}${sep2}`;
+    if (!resolved.startsWith(rootPrefix)) {
+      throw new BrainStorageCorruptionError(`Artifact ${artifact.id} escapes the brain root`);
+    }
+    const relativePath = relative4(this.root, resolved).split(sep2).join("/");
+    if (!relativePath.startsWith("vault/inbox/") && !relativePath.startsWith("vault/curated/")) {
+      throw new BrainStorageCorruptionError(`Artifact ${artifact.id} is outside the managed vault`);
+    }
+    return resolved;
+  }
+  async readPath(path) {
+    let text4;
+    try {
+      text4 = await readFile12(path, "utf8");
+    } catch (error) {
+      if (errorCode8(error) === "ENOENT") {
+        return null;
+      }
+      throw error;
+    }
+    return parseBrainMarkdown(text4);
+  }
+};
+async function markdownFiles(directory) {
+  const paths = [];
+  for (const entry of await readdir7(directory, { withFileTypes: true })) {
+    const path = join25(directory, entry.name);
+    if (entry.isDirectory()) {
+      paths.push(...await markdownFiles(path));
+    } else if (entry.isFile() && entry.name.endsWith(".md")) {
+      paths.push(path);
+    }
+  }
+  return paths.sort();
+}
+function errorCode8(error) {
+  return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string" ? error.code : void 0;
+}
+
+// src/hub/brain/input-validation.ts
+function validateCaptureInput(input) {
+  validateActor(input.actor);
+  validateRequestId(input.requestId);
+  if (!isBrainArtifactType(input.type)) {
+    throw new BrainValidationError("type is not a supported brain artifact type");
+  }
+  if (!isBrainSensitivity(input.sensitivity)) {
+    throw new BrainValidationError("sensitivity is not supported");
+  }
+  if (input.layer !== void 0 && !isBrainArtifactLayer(input.layer)) {
+    throw new BrainValidationError("layer is not a supported brain artifact layer");
+  }
+  validateTitle(input.title);
+  validateContent(input.content);
+  validateBrainJsonRecord(input.frontmatter ?? {}, "frontmatter");
+  validateBrainJsonRecord(input.provenance, "provenance");
+  validateTypedMetadata({
+    id: "00000000-0000-0000-0000-000000000000",
+    type: input.type,
+    layer: input.layer ?? defaultBrainLayer(input.type),
+    path: "vault/inbox/00000000-0000-0000-0000-000000000000.md",
+    revision: "1",
+    contentHash: "sha256:0",
+    title: input.title,
+    content: input.content,
+    frontmatter: input.frontmatter ?? {},
+    provenance: input.provenance,
+    ...input.source === void 0 ? {} : { source: input.source },
+    details: input.details ?? { kind: "none" },
+    sensitivity: input.sensitivity,
+    createdAt: (/* @__PURE__ */ new Date(0)).toISOString(),
+    createdBy: input.actor.actorId,
+    updatedAt: (/* @__PURE__ */ new Date(0)).toISOString(),
+    updatedBy: input.actor.actorId
+  });
+}
+function validateUpdateInput(input) {
+  validateActor(input.actor);
+  validateRequestId(input.requestId);
+  validateArtifactId(input.artifactId);
+  validateRevision(input.baseRevision, "baseRevision");
+  if (input.type !== void 0 && !isBrainArtifactType(input.type)) {
+    throw new BrainValidationError("type is not a supported brain artifact type");
+  }
+  if (input.sensitivity !== void 0 && !isBrainSensitivity(input.sensitivity)) {
+    throw new BrainValidationError("sensitivity is not supported");
+  }
+  if (input.layer !== void 0 && !isBrainArtifactLayer(input.layer)) {
+    throw new BrainValidationError("layer is not a supported brain artifact layer");
+  }
+  if (input.title !== void 0) {
+    validateTitle(input.title);
+  }
+  if (input.content !== void 0) {
+    validateContent(input.content);
+  }
+  if (input.frontmatter !== void 0) {
+    validateBrainJsonRecord(input.frontmatter, "frontmatter");
+  }
+  if (input.provenance !== void 0) {
+    validateBrainJsonRecord(input.provenance, "provenance");
+  }
+  if (input.details !== void 0) {
+    validateDetailsShape(input.details);
+  }
+}
+function validateLinkInput(input) {
+  validateActor(input.actor);
+  validateRequestId(input.requestId);
+  validateArtifactId(input.sourceArtifactId);
+  validateArtifactId(input.targetArtifactId);
+  validateRelationship(input.relationship);
+}
+function validateTypedMetadata(artifact) {
+  try {
+    parseBrainArtifact(artifact);
+  } catch {
+    throw new BrainValidationError("typed brain metadata is malformed");
+  }
+}
+function validateDetailsShape(details) {
+  try {
+    parseBrainArtifactDetails(details);
+  } catch {
+    throw new BrainValidationError("typed brain metadata is malformed");
+  }
+}
+
+// src/hub/brain/operation.ts
+function createArtifactOperation(action, actor, requestId2, payloadHash, artifact, createdAt, base) {
+  return {
+    version: 1,
+    operationId: deterministicBrainId("operation", actor.actorId, requestId2),
+    action,
+    actor,
+    requestId: requestId2,
+    payloadHash,
+    artifact,
+    ...base ? { base } : {},
+    event: {
+      eventId: deterministicBrainId("event", actor.actorId, requestId2),
+      kind: action === "capture" ? "brain.captured" : "brain.updated",
+      actor,
+      resource: { kind: "brain-artifact", id: artifact.id, revision: artifact.revision },
+      requestId: requestId2,
+      payloadHash,
+      createdAt
+    },
+    createdAt
+  };
+}
+function pendingOperationResult(operation, eventSequence) {
+  return operation.action === "link" ? { kind: "link", link: operation.link, eventSequence } : { kind: "artifact", artifact: withoutContent(operation.artifact), eventSequence };
+}
+function requireArtifactResult(result) {
+  if (result.kind !== "artifact") {
+    throw new BrainStorageCorruptionError("Artifact request replayed a link result");
+  }
+  return result;
+}
+function requireLinkResult(result) {
+  if (result.kind !== "link") {
+    throw new BrainStorageCorruptionError("Link request replayed an artifact result");
+  }
+  return result;
+}
+
+// src/hub/brain/operation-executor.ts
+var BrainOperationExecutor = class {
+  constructor(source, audit, journal, index, faultInjector) {
+    this.source = source;
+    this.audit = audit;
+    this.journal = journal;
+    this.index = index;
+    this.faultInjector = faultInjector;
+  }
+  source;
+  audit;
+  journal;
+  index;
+  faultInjector;
+  async prepare(operation) {
+    await this.source.stage(operation.operationId, operation.artifact);
+    await this.journal.write(operation);
+  }
+  async finalize(operation) {
+    if (operation.action !== "link") {
+      await this.faultInjector?.("beforeRename", operation);
+      await this.source.commit(operation.operationId, operation.artifact, operation.base);
+      await this.faultInjector?.("afterRename", operation);
+    }
+    const event = await this.audit.append(operation.event, pendingOperationResult(operation, "0"));
+    await this.faultInjector?.("afterAudit", operation);
+    await this.index.commit(operation, event);
+    await this.faultInjector?.("afterIndexCommit", operation);
+    if (operation.action !== "link") {
+      await this.source.cleanupStage(operation.operationId);
+    }
+    await this.journal.remove(operation.operationId);
+    return event.result;
+  }
+  async recoverPending() {
+    const operations = await this.journal.list();
+    for (const operation of operations) {
+      await this.finalize(operation);
+    }
+    await this.source.cleanupOrphanStages(/* @__PURE__ */ new Set());
+  }
+};
+
+// src/hub/brain/operation-journal.ts
+import { mkdir as mkdir14, readFile as readFile13, readdir as readdir8, rm as rm10 } from "node:fs/promises";
+import { join as join26 } from "node:path";
+var FileBrainOperationJournal = class {
+  directory;
+  constructor(root4) {
+    this.directory = brainLayout(root4).pending;
+  }
+  async initialize() {
+    await mkdir14(this.directory, { recursive: true });
+  }
+  async write(operation) {
+    validateArtifactId(operation.operationId);
+    await atomicWriteJson(this.path(operation.operationId), operation, { mode: 384 });
+  }
+  async list() {
+    const operations = [];
+    for (const entry of (await readdir8(this.directory, { withFileTypes: true })).sort((left, right) => left.name.localeCompare(right.name))) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) {
+        continue;
+      }
+      const value = JSON.parse(await readFile13(join26(this.directory, entry.name), "utf8"));
+      operations.push(parseBrainPendingOperation(value));
+    }
+    return operations.sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.operationId.localeCompare(right.operationId));
+  }
+  async remove(operationId) {
+    await rm10(this.path(operationId), { force: true });
+    await syncDirectory(this.directory);
+  }
+  path(operationId) {
+    validateArtifactId(operationId);
+    return join26(this.directory, `${operationId}.json`);
+  }
+};
+
+// src/hub/brain/retrieval-input-validation.ts
+function validateRetrievalInput(input) {
+  if (input.tier !== void 0 && input.tier !== "quick" && input.tier !== "standard" && input.tier !== "deep") {
+    throw new BrainValidationError("tier is not a supported brain retrieval tier");
+  }
+  if (input.limit !== void 0 && (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 40)) {
+    throw new BrainValidationError("limit must be an integer between 1 and 40");
+  }
+  for (const type of input.filters?.types ?? []) {
+    if (!isBrainArtifactType(type)) throw new BrainValidationError("filters.types contains an unsupported brain artifact type");
+  }
+  for (const layer of input.filters?.layers ?? []) {
+    if (!isBrainArtifactLayer(layer)) throw new BrainValidationError("filters.layers contains an unsupported brain artifact layer");
+  }
+  for (const sensitivity2 of input.filters?.sensitivities ?? []) {
+    if (!isBrainSensitivity(sensitivity2)) throw new BrainValidationError("filters.sensitivities contains an unsupported brain sensitivity");
+  }
+  for (const status of input.filters?.statuses ?? []) {
+    if (status !== "draft" && status !== "accepted" && status !== "disputed" && status !== "superseded") {
+      throw new BrainValidationError("filters.statuses contains an unsupported knowledge status");
+    }
+  }
+  validateIsoBoundary(input.filters?.updatedAfter, "filters.updatedAfter");
+  validateIsoBoundary(input.filters?.updatedBefore, "filters.updatedBefore");
+}
+function validateIsoBoundary(value, field) {
+  if (value === void 0) return;
+  if (!Number.isFinite(Date.parse(value))) throw new BrainValidationError(`${field} must be an ISO timestamp`);
+}
+
+// src/hub/brain/sqlite-index.ts
+import { mkdir as mkdir15 } from "node:fs/promises";
+import { dirname as dirname14 } from "node:path";
+
+// src/hub/brain/sqlite-schema.ts
+var BRAIN_SQLITE_SCHEMA = `
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = FULL;
+PRAGMA foreign_keys = ON;
+CREATE TABLE IF NOT EXISTS artifacts (
+  id TEXT PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE,
+  revision TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  sensitivity TEXT NOT NULL,
+  provenance_json TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  content TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS artifact_fts USING fts5(
+  artifact_id UNINDEXED,
+  title,
+  content,
+  type,
+  provenance,
+  tokenize = 'unicode61'
+);
+CREATE TABLE IF NOT EXISTS audit_events (
+  sequence TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL UNIQUE,
+  event_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS idempotency (
+  actor_id TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  PRIMARY KEY (actor_id, request_id)
+);
+CREATE TABLE IF NOT EXISTS links (
+  id TEXT PRIMARY KEY,
+  source_artifact_id TEXT NOT NULL,
+  target_artifact_id TEXT NOT NULL,
+  relationship TEXT NOT NULL,
+  link_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS links_source_idx ON links(source_artifact_id);
+CREATE INDEX IF NOT EXISTS links_target_idx ON links(target_artifact_id);
+`;
+
+// src/hub/brain/sqlite-runtime.ts
+async function openBrainSqlite(path) {
+  const specifier = "node:sqlite";
+  const module = await import(specifier);
+  if (!isRecord8(module) || typeof module.DatabaseSync !== "function") {
+    throw new BrainStorageCorruptionError("The Hub runtime does not provide node:sqlite DatabaseSync");
+  }
+  const database = Reflect.construct(module.DatabaseSync, [path]);
+  assertDatabase(database);
+  return database;
+}
+function assertDatabase(value) {
+  if (!isRecord8(value) || typeof value.exec !== "function" || typeof value.prepare !== "function" || typeof value.close !== "function") {
+    throw new BrainStorageCorruptionError("node:sqlite returned an invalid database adapter");
+  }
+}
+function isRecord8(value) {
+  return typeof value === "object" && value !== null;
+}
+
+// src/hub/brain/sqlite-index.ts
+var SqliteBrainMetadataIndex = class {
+  path;
+  database = null;
+  constructor(root4) {
+    this.path = brainLayout(root4).sqlite;
+  }
+  async initialize() {
+    await mkdir15(dirname14(this.path), { recursive: true });
+    this.database = await openBrainSqlite(this.path);
+    this.database.exec(BRAIN_SQLITE_SCHEMA);
+  }
+  async close() {
+    this.database?.close();
+    this.database = null;
+  }
+  async getIdempotency(actorId, requestId2) {
+    const row = this.statement("SELECT payload_hash, result_json FROM idempotency WHERE actor_id = ? AND request_id = ?").get(actorId, requestId2);
+    if (row === void 0) {
+      return null;
+    }
+    const record = rowRecord(row);
+    return {
+      actorId,
+      requestId: requestId2,
+      payloadHash: textColumn(record, "payload_hash"),
+      result: parseBrainMutationResult(JSON.parse(textColumn(record, "result_json")))
+    };
+  }
+  async getArtifactMetadata(artifactId2) {
+    const row = this.statement("SELECT metadata_json FROM artifacts WHERE id = ?").get(artifactId2);
+    if (row === void 0) {
+      return null;
+    }
+    return parseBrainArtifactMetadata(JSON.parse(textColumn(rowRecord(row), "metadata_json")));
+  }
+  async commit(operation, event) {
+    this.transaction(() => {
+      if (operation.action === "link") {
+        this.upsertLink(operation.link);
+      } else {
+        this.upsertArtifact(operation.artifact);
+      }
+      this.insertEvent(event);
+      this.insertIdempotency(event);
+    });
+  }
+  async rebuild(artifacts, events) {
+    this.transaction(() => {
+      this.databaseOrThrow().exec("DELETE FROM artifact_fts; DELETE FROM artifacts; DELETE FROM links; DELETE FROM audit_events; DELETE FROM idempotency;");
+      for (const artifact of artifacts) {
+        this.upsertArtifact(artifact);
+      }
+      for (const event of events) {
+        if (event.result.kind === "link") {
+          this.upsertLink(event.result.link);
+        }
+        this.insertEvent(event);
+        this.insertIdempotency(event);
+      }
+    });
+  }
+  async search(query2, type, limit) {
+    const ftsQuery = toFtsQuery(query2);
+    const rows = this.statement(`
+      SELECT a.metadata_json, snippet(artifact_fts, 2, '', '', ' ... ', 18) AS excerpt
+      FROM artifact_fts
+      JOIN artifacts a ON a.id = artifact_fts.artifact_id
+      WHERE artifact_fts MATCH ? AND (? IS NULL OR a.type = ?)
+      ORDER BY bm25(artifact_fts), a.updated_at DESC, a.id ASC
+      LIMIT ?
+    `).all(ftsQuery, type ?? null, type ?? null, limit);
+    return rows.map((row) => {
+      const record = rowRecord(row);
+      return {
+        ...parseBrainArtifactMetadata(JSON.parse(textColumn(record, "metadata_json"))),
+        excerpt: textColumn(record, "excerpt")
+      };
+    });
+  }
+  async links(artifactId2) {
+    return this.statement(`
+      SELECT link_json FROM links
+      WHERE source_artifact_id = ? OR target_artifact_id = ?
+      ORDER BY id ASC
+    `).all(artifactId2, artifactId2).map((row) => parseLink(JSON.parse(textColumn(rowRecord(row), "link_json"))));
+  }
+  async healthSnapshot() {
+    return {
+      artifactIds: this.statement("SELECT id FROM artifacts ORDER BY id ASC").all().map((row) => textColumn(rowRecord(row), "id")),
+      linkIds: this.statement("SELECT id FROM links ORDER BY id ASC").all().map((row) => textColumn(rowRecord(row), "id")),
+      eventSequences: this.statement("SELECT sequence FROM audit_events ORDER BY sequence ASC").all().map((row) => textColumn(rowRecord(row), "sequence")),
+      idempotencyKeys: this.statement("SELECT actor_id, request_id FROM idempotency ORDER BY actor_id ASC, request_id ASC").all().map((row) => {
+        const record = rowRecord(row);
+        return `${textColumn(record, "actor_id")}\0${textColumn(record, "request_id")}`;
+      })
+    };
+  }
+  upsertArtifact(artifact) {
+    const metadata2 = withoutContent(artifact);
+    this.statement("DELETE FROM artifact_fts WHERE artifact_id = ?").run(artifact.id);
+    this.statement(`
+      INSERT INTO artifacts (
+        id, path, revision, content_hash, type, title, sensitivity,
+        provenance_json, metadata_json, content, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        path = excluded.path,
+        revision = excluded.revision,
+        content_hash = excluded.content_hash,
+        type = excluded.type,
+        title = excluded.title,
+        sensitivity = excluded.sensitivity,
+        provenance_json = excluded.provenance_json,
+        metadata_json = excluded.metadata_json,
+        content = excluded.content,
+        updated_at = excluded.updated_at
+    `).run(
+      artifact.id,
+      artifact.path,
+      artifact.revision,
+      artifact.contentHash,
+      artifact.type,
+      artifact.title,
+      artifact.sensitivity,
+      JSON.stringify(artifact.provenance),
+      JSON.stringify(metadata2),
+      artifact.content,
+      artifact.updatedAt
+    );
+    this.statement("INSERT INTO artifact_fts (artifact_id, title, content, type, provenance) VALUES (?, ?, ?, ?, ?)").run(artifact.id, artifact.title, artifact.content, artifact.type, JSON.stringify({
+      layer: artifact.layer,
+      provenance: artifact.provenance,
+      source: artifact.source ?? null,
+      details: artifact.details
+    }));
+  }
+  upsertLink(link) {
+    this.statement(`
+      INSERT INTO links (id, source_artifact_id, target_artifact_id, relationship, link_json)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET link_json = excluded.link_json
+    `).run(link.id, link.sourceArtifactId, link.targetArtifactId, link.relationship, JSON.stringify(link));
+  }
+  insertEvent(event) {
+    this.statement("INSERT OR IGNORE INTO audit_events (sequence, event_id, event_json) VALUES (?, ?, ?)").run(event.sequence, event.eventId, JSON.stringify(event));
+  }
+  insertIdempotency(event) {
+    this.statement(`
+      INSERT OR IGNORE INTO idempotency (actor_id, request_id, payload_hash, result_json)
+      VALUES (?, ?, ?, ?)
+    `).run(event.actor.actorId, event.requestId, event.payloadHash, JSON.stringify(event.result));
+  }
+  statement(sql) {
+    const statement = this.databaseOrThrow().prepare(sql);
+    if (!isRecord9(statement) || typeof statement.run !== "function" || typeof statement.get !== "function" || typeof statement.all !== "function") {
+      throw new BrainStorageCorruptionError("node:sqlite returned an invalid statement");
+    }
+    const run2 = statement.run;
+    const get = statement.get;
+    const all = statement.all;
+    return {
+      run(...parameters) {
+        return Reflect.apply(run2, statement, parameters);
+      },
+      get(...parameters) {
+        return Reflect.apply(get, statement, parameters);
+      },
+      all(...parameters) {
+        const rows = Reflect.apply(all, statement, parameters);
+        if (!Array.isArray(rows)) {
+          throw new BrainStorageCorruptionError("node:sqlite returned malformed rows");
+        }
+        return rows;
+      }
+    };
+  }
+  databaseOrThrow() {
+    if (!this.database) {
+      throw new BrainStorageCorruptionError("Brain SQLite index is not initialized");
+    }
+    return this.database;
+  }
+  transaction(fn) {
+    const database = this.databaseOrThrow();
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      fn();
+      database.exec("COMMIT");
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+};
+function toFtsQuery(query2) {
+  const tokens = query2.match(/[\p{L}\p{N}_-]+/gu) ?? [];
+  if (tokens.length === 0) {
+    throw new BrainStorageCorruptionError("Search query contains no indexable terms");
+  }
+  return tokens.map((token) => `"${token.replaceAll('"', '""')}"`).join(" AND ");
+}
+function parseLink(value) {
+  if (!isRecord9(value) || typeof value.id !== "string" || typeof value.sourceArtifactId !== "string" || typeof value.targetArtifactId !== "string" || typeof value.relationship !== "string" || typeof value.createdAt !== "string" || typeof value.createdBy !== "string") {
+    throw new BrainStorageCorruptionError("Brain link index row is malformed");
+  }
+  return {
+    id: value.id,
+    sourceArtifactId: value.sourceArtifactId,
+    targetArtifactId: value.targetArtifactId,
+    relationship: value.relationship,
+    createdAt: value.createdAt,
+    createdBy: value.createdBy
+  };
+}
+function rowRecord(value) {
+  if (!isRecord9(value)) {
+    throw new BrainStorageCorruptionError("Brain SQLite row is malformed");
+  }
+  return value;
+}
+function textColumn(row, column) {
+  const value = row[column];
+  if (typeof value !== "string") {
+    throw new BrainStorageCorruptionError(`Brain SQLite column ${column} is malformed`);
+  }
+  return value;
+}
+function isRecord9(value) {
+  return typeof value === "object" && value !== null;
+}
+
+// src/hub/brain/service.ts
+var BrainService = class {
+  constructor(permissions, source, audit, journal, index, projection, clock, faultInjector) {
+    this.permissions = permissions;
+    this.source = source;
+    this.audit = audit;
+    this.journal = journal;
+    this.index = index;
+    this.projection = projection;
+    this.clock = clock;
+    this.faultInjector = faultInjector;
+    this.executor = new BrainOperationExecutor(source, audit, journal, index, faultInjector);
+    this.retrieval = new BrainRetrievalService(source, audit, index, clock);
+  }
+  permissions;
+  source;
+  audit;
+  journal;
+  index;
+  projection;
+  clock;
+  faultInjector;
+  queue = Promise.resolve();
+  executor;
+  retrieval;
+  async initialize() {
+    await this.source.initialize();
+    await this.audit.initialize();
+    await this.journal.initialize();
+    await this.index.initialize();
+    await this.executor.recoverPending();
+    const artifacts = await this.source.list();
+    await this.index.rebuild(artifacts, await this.audit.readAll());
+    await this.initializeProjection(artifacts);
+  }
+  async close() {
+    await this.index.close();
+  }
+  async capture(input) {
+    validateCaptureInput(input);
+    await this.permissions.requireWrite(input.actor, "capture");
+    return await this.enqueue(async () => {
+      await this.executor.recoverPending();
+      const payloadHash = hashBrainPayload({
+        action: "capture",
+        type: input.type,
+        title: input.title,
+        content: input.content,
+        layer: input.layer,
+        frontmatter: input.frontmatter ?? {},
+        provenance: input.provenance,
+        source: input.source,
+        details: input.details ?? { kind: "none" },
+        sensitivity: input.sensitivity
+      });
+      const replay = await this.replay(input.actor, input.requestId, payloadHash);
+      if (replay) {
+        return requireArtifactResult(replay);
+      }
+      const contentHash = hashBrainContent(input.content);
+      const existingSource = input.type === "source" ? await this.findSourceByContentHash(contentHash) : null;
+      if (existingSource) {
+        if (existingSource.sensitivity !== input.sensitivity) {
+          throw new BrainSourceSensitivityMismatchError(contentHash);
+        }
+        const operation2 = createArtifactOperation("capture", input.actor, input.requestId, payloadHash, existingSource, this.clock().toISOString());
+        await this.projection?.markDirty();
+        await this.executor.prepare(operation2);
+        const result2 = requireArtifactResult(await this.executor.finalize(operation2));
+        await this.refreshProjection();
+        return result2;
+      }
+      const artifactId2 = input.type === "source" ? deterministicBrainId("source-artifact", "content", contentHash) : deterministicBrainId("artifact", input.actor.actorId, input.requestId);
+      if (await this.source.read(artifactId2)) {
+        throw new BrainStorageCorruptionError(`Artifact ID ${artifactId2} exists without an idempotency record`);
+      }
+      const now = this.clock().toISOString();
+      const artifact = {
+        id: artifactId2,
+        type: input.type,
+        layer: input.layer ?? defaultBrainLayer(input.type),
+        path: `vault/inbox/${artifactId2}.md`,
+        revision: "1",
+        contentHash,
+        title: input.title,
+        content: input.content,
+        frontmatter: input.frontmatter ?? {},
+        provenance: input.provenance,
+        ...input.source === void 0 ? {} : { source: input.source },
+        details: input.details ?? { kind: "none" },
+        sensitivity: input.sensitivity,
+        createdAt: now,
+        createdBy: input.actor.actorId,
+        updatedAt: now,
+        updatedBy: input.actor.actorId
+      };
+      const operation = createArtifactOperation("capture", input.actor, input.requestId, payloadHash, artifact, now);
+      await this.projection?.markDirty();
+      await this.executor.prepare(operation);
+      const result = requireArtifactResult(await this.executor.finalize(operation));
+      await this.refreshProjection();
+      return result;
+    });
+  }
+  async update(input) {
+    validateUpdateInput(input);
+    await this.permissions.requireWrite(input.actor, "update");
+    return await this.enqueue(async () => {
+      await this.executor.recoverPending();
+      const payloadHash = hashBrainPayload({
+        action: "update",
+        artifactId: input.artifactId,
+        baseRevision: input.baseRevision,
+        type: input.type,
+        layer: input.layer,
+        title: input.title,
+        content: input.content,
+        frontmatter: input.frontmatter,
+        provenance: input.provenance,
+        details: input.details,
+        sensitivity: input.sensitivity
+      });
+      const replay = await this.replay(input.actor, input.requestId, payloadHash);
+      if (replay) {
+        return requireArtifactResult(replay);
+      }
+      const current = await this.source.read(input.artifactId);
+      if (!current) {
+        throw new BrainNotFoundError(input.artifactId);
+      }
+      if (immutableSourceType(current.type) || input.type !== void 0 && immutableSourceType(input.type)) {
+        throw new BrainImmutableSourceError(input.artifactId);
+      }
+      if (current.revision !== input.baseRevision) {
+        throw new BrainRevisionConflictError(input.baseRevision, current.revision);
+      }
+      const indexed = await this.index.getArtifactMetadata(input.artifactId);
+      if (indexed && indexed.contentHash !== current.contentHash) {
+        throw new BrainRevisionConflictError(input.baseRevision, current.revision, indexed.contentHash, current.contentHash);
+      }
+      const now = this.clock().toISOString();
+      const content = input.content ?? current.content;
+      const type = input.type ?? current.type;
+      const details = input.details ?? (input.type === void 0 ? current.details : { kind: "none" });
+      const artifact = {
+        ...current,
+        type,
+        layer: input.layer ?? (input.type === void 0 ? current.layer : defaultBrainLayer(type)),
+        revision: (BigInt(current.revision) + 1n).toString(),
+        contentHash: hashBrainContent(content),
+        title: input.title ?? current.title,
+        content,
+        frontmatter: input.frontmatter ?? current.frontmatter,
+        provenance: input.provenance ?? current.provenance,
+        details,
+        sensitivity: input.sensitivity ?? current.sensitivity,
+        updatedAt: now,
+        updatedBy: input.actor.actorId
+      };
+      validateMergedArtifact(artifact);
+      const operation = createArtifactOperation("update", input.actor, input.requestId, payloadHash, artifact, now, {
+        revision: current.revision,
+        contentHash: current.contentHash
+      });
+      await this.projection?.markDirty();
+      await this.executor.prepare(operation);
+      const result = requireArtifactResult(await this.executor.finalize(operation));
+      await this.refreshProjection();
+      return result;
+    });
+  }
+  async link(input) {
+    validateLinkInput(input);
+    await this.permissions.requireWrite(input.actor, "link");
+    return await this.enqueue(async () => {
+      await this.executor.recoverPending();
+      const payloadHash = hashBrainPayload({
+        action: "link",
+        sourceArtifactId: input.sourceArtifactId,
+        targetArtifactId: input.targetArtifactId,
+        relationship: input.relationship
+      });
+      const replay = await this.replay(input.actor, input.requestId, payloadHash);
+      if (replay) {
+        return requireLinkResult(replay);
+      }
+      if (!await this.source.read(input.sourceArtifactId)) {
+        throw new BrainNotFoundError(input.sourceArtifactId);
+      }
+      if (!await this.source.read(input.targetArtifactId)) {
+        throw new BrainNotFoundError(input.targetArtifactId);
+      }
+      const now = this.clock().toISOString();
+      const operationId = deterministicBrainId("operation", input.actor.actorId, input.requestId);
+      const linkId = deterministicBrainId("link", input.actor.actorId, input.requestId);
+      const operation = {
+        version: 1,
+        operationId,
+        action: "link",
+        actor: input.actor,
+        requestId: input.requestId,
+        payloadHash,
+        link: {
+          id: linkId,
+          sourceArtifactId: input.sourceArtifactId,
+          targetArtifactId: input.targetArtifactId,
+          relationship: input.relationship,
+          createdAt: now,
+          createdBy: input.actor.actorId
+        },
+        event: {
+          eventId: deterministicBrainId("event", input.actor.actorId, input.requestId),
+          kind: "brain.linked",
+          actor: input.actor,
+          resource: { kind: "brain-link", id: linkId },
+          requestId: input.requestId,
+          payloadHash,
+          createdAt: now
+        },
+        createdAt: now
+      };
+      await this.projection?.markDirty();
+      await this.journal.write(operation);
+      const result = requireLinkResult(await this.executor.finalize(operation));
+      await this.refreshProjection();
+      return result;
+    });
+  }
+  async read(input) {
+    validateActor(input.actor);
+    validateArtifactId(input.artifactId);
+    await this.permissions.requireRead(input.actor);
+    const artifact = await this.source.read(input.artifactId);
+    if (!artifact) {
+      throw new BrainNotFoundError(input.artifactId);
+    }
+    return artifact;
+  }
+  async search(input) {
+    validateActor(input.actor);
+    validateSearchQuery(input.query);
+    if (input.type !== void 0 && !isBrainArtifactType(input.type)) {
+      throw new BrainValidationError("type is not a supported brain artifact type");
+    }
+    await this.permissions.requireRead(input.actor);
+    const requestedLimit = input.limit ?? 20;
+    const limit = Math.min(50, Math.max(1, Number.isInteger(requestedLimit) ? requestedLimit : 20));
+    return await this.index.search(input.query, input.type, limit);
+  }
+  async retrieve(input) {
+    validateActor(input.actor);
+    validateSearchQuery(input.query);
+    validateRetrievalInput(input);
+    await this.permissions.requireRead(input.actor);
+    return await this.retrieval.retrieve(input);
+  }
+  async health(input) {
+    validateActor(input.actor);
+    await this.permissions.requireRead(input.actor);
+    return await this.retrieval.health();
+  }
+  async list(input) {
+    validateActor(input.actor);
+    if (input.type !== void 0 && !isBrainArtifactType(input.type)) {
+      throw new BrainValidationError("type is not a supported brain artifact type");
+    }
+    await this.permissions.requireRead(input.actor);
+    const artifacts = await this.source.list();
+    return artifacts.filter((artifact) => input.type === void 0 || artifact.type === input.type).sort((left, right) => left.updatedAt.localeCompare(right.updatedAt) || left.id.localeCompare(right.id));
+  }
+  async links(input) {
+    validateActor(input.actor);
+    validateArtifactId(input.artifactId);
+    await this.permissions.requireRead(input.actor);
+    if (!await this.source.read(input.artifactId)) {
+      throw new BrainNotFoundError(input.artifactId);
+    }
+    return await this.index.links(input.artifactId);
+  }
+  async latestEventSequence() {
+    return await this.audit.latestSequence();
+  }
+  async replay(actor, requestId2, payloadHash) {
+    const existing = await this.index.getIdempotency(actor.actorId, requestId2);
+    if (!existing) {
+      return null;
+    }
+    if (existing.payloadHash !== payloadHash) {
+      throw new BrainIdempotencyConflictError(actor.actorId, requestId2);
+    }
+    return existing.result;
+  }
+  async enqueue(fn) {
+    const previous = this.queue;
+    let release;
+    const current = new Promise((resolve11) => {
+      release = resolve11;
+    });
+    this.queue = previous.then(() => current, () => current);
+    await previous.catch(() => void 0);
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+  async findSourceByContentHash(contentHash) {
+    return (await this.source.list()).find((artifact) => artifact.type === "source" && artifact.contentHash === contentHash) ?? null;
+  }
+  async refreshProjection() {
+    try {
+      await this.projection?.refresh(await this.source.list());
+    } catch {
+      return;
+    }
+  }
+  async initializeProjection(artifacts) {
+    try {
+      await this.projection?.initialize(artifacts);
+    } catch {
+      try {
+        await this.projection?.markDirty();
+      } catch {
+        return;
+      }
+    }
+  }
+};
+async function createBrainService(dependencies) {
+  const service = new BrainService(
+    dependencies.permissions,
+    dependencies.sourceStore ?? new FileBrainSourceStore(dependencies.root),
+    dependencies.audit ?? new JsonlBrainAuditLog(dependencies.root),
+    dependencies.journal ?? new FileBrainOperationJournal(dependencies.root),
+    dependencies.index ?? new SqliteBrainMetadataIndex(dependencies.root),
+    dependencies.projection,
+    dependencies.clock ?? (() => /* @__PURE__ */ new Date()),
+    dependencies.faultInjector
+  );
+  try {
+    await service.initialize();
+    return service;
+  } catch (error) {
+    await service.close();
+    throw error;
+  }
+}
+function validateMergedArtifact(artifact) {
+  try {
+    parseBrainArtifact(artifact);
+  } catch {
+    throw new BrainValidationError("typed brain metadata is malformed");
+  }
+}
+function immutableSourceType(type) {
+  return type === "source" || type === "source-observation";
+}
 
 // src/hub/mcp/errors.ts
 var BrainMcpError = class extends Error {
@@ -4847,12 +6993,12 @@ var BrainMcpError = class extends Error {
 };
 
 // src/hub/adapter-schema.ts
-var uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+var uuidPattern2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 var artifactTypes2 = new Set(brainArtifactTypes);
 var artifactLayers3 = new Set(brainArtifactLayers);
-var sensitivities = /* @__PURE__ */ new Set(["private", "tailnet", "restricted"]);
+var sensitivities2 = /* @__PURE__ */ new Set(["private", "tailnet", "restricted"]);
 function isCanonicalUuid(value) {
-  return typeof value === "string" && uuidPattern.test(value);
+  return typeof value === "string" && uuidPattern2.test(value);
 }
 function isBrainArtifactType2(value) {
   return typeof value === "string" && artifactTypes2.has(value);
@@ -4861,22 +7007,22 @@ function isBrainArtifactLayer2(value) {
   return typeof value === "string" && artifactLayers3.has(value);
 }
 function isBrainSensitivity2(value) {
-  return typeof value === "string" && sensitivities.has(value);
+  return typeof value === "string" && sensitivities2.has(value);
 }
-function isJsonRecord(value) {
-  return isRecord5(value) && Object.values(value).every(isJsonValue);
+function isJsonRecord2(value) {
+  return isRecord10(value) && Object.values(value).every(isJsonValue2);
 }
-function isRecord5(value) {
+function isRecord10(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function unknownKeys(value, allowedKeys) {
   return Object.keys(value).filter((key) => !allowedKeys.includes(key)).sort();
 }
-function isJsonValue(value) {
+function isJsonValue2(value) {
   if (value === null || typeof value === "string" || typeof value === "boolean") return true;
   if (typeof value === "number") return Number.isFinite(value);
-  if (Array.isArray(value)) return value.every(isJsonValue);
-  return isJsonRecord(value);
+  if (Array.isArray(value)) return value.every(isJsonValue2);
+  return isJsonRecord2(value);
 }
 
 // src/policy/workflow-proof-schema.ts
@@ -4985,7 +7131,7 @@ function parseBrainMcpSearch(value) {
 }
 function parseBrainMcpRetrieve(value) {
   const input = strictObject(value, ["query", "tier", "limit", "filters"]);
-  if (typeof input.query !== "string" || input.tier !== void 0 && input.tier !== "quick" && input.tier !== "standard" && input.tier !== "deep" || input.limit !== void 0 && (typeof input.limit !== "number" || !Number.isInteger(input.limit) || input.limit < 1 || input.limit > 40) || input.filters !== void 0 && !isRecord5(input.filters)) {
+  if (typeof input.query !== "string" || input.tier !== void 0 && input.tier !== "quick" && input.tier !== "standard" && input.tier !== "deep" || input.limit !== void 0 && (typeof input.limit !== "number" || !Number.isInteger(input.limit) || input.limit < 1 || input.limit > 40) || input.filters !== void 0 && !isRecord10(input.filters)) {
     throw validationError("brain_retrieve arguments have invalid field types");
   }
   return {
@@ -5005,7 +7151,7 @@ function parseBrainMcpRead(value) {
 }
 function parseBrainMcpCapture(value) {
   const input = strictObject(value, ["requestId", "type", "layer", "title", "content", "frontmatter", "provenance", "source", "details", "sensitivity"]);
-  if (!isBrainArtifactType2(input.type) || typeof input.title !== "string" || typeof input.content !== "string" || !isJsonRecord(input.provenance) || !isBrainSensitivity2(input.sensitivity) || input.layer !== void 0 && !isBrainArtifactLayer2(input.layer) || input.source !== void 0 && !isJsonRecord(input.source) || input.details !== void 0 && !isJsonRecord(input.details) || input.frontmatter !== void 0 && !isJsonRecord(input.frontmatter)) {
+  if (!isBrainArtifactType2(input.type) || typeof input.title !== "string" || typeof input.content !== "string" || !isJsonRecord2(input.provenance) || !isBrainSensitivity2(input.sensitivity) || input.layer !== void 0 && !isBrainArtifactLayer2(input.layer) || input.source !== void 0 && !isJsonRecord2(input.source) || input.details !== void 0 && !isJsonRecord2(input.details) || input.frontmatter !== void 0 && !isJsonRecord2(input.frontmatter)) {
     throw validationError("brain_capture arguments have invalid field types");
   }
   return {
@@ -5023,7 +7169,7 @@ function parseBrainMcpCapture(value) {
 }
 function parseBrainMcpUpdate(value) {
   const input = strictObject(value, ["requestId", "artifactId", "baseRevision", "type", "layer", "title", "content", "frontmatter", "provenance", "details", "sensitivity"]);
-  if (typeof input.baseRevision !== "string" || input.type !== void 0 && !isBrainArtifactType2(input.type) || input.layer !== void 0 && !isBrainArtifactLayer2(input.layer) || input.title !== void 0 && typeof input.title !== "string" || input.content !== void 0 && typeof input.content !== "string" || input.frontmatter !== void 0 && !isJsonRecord(input.frontmatter) || input.provenance !== void 0 && !isJsonRecord(input.provenance) || input.details !== void 0 && !isJsonRecord(input.details) || input.sensitivity !== void 0 && !isBrainSensitivity2(input.sensitivity)) {
+  if (typeof input.baseRevision !== "string" || input.type !== void 0 && !isBrainArtifactType2(input.type) || input.layer !== void 0 && !isBrainArtifactLayer2(input.layer) || input.title !== void 0 && typeof input.title !== "string" || input.content !== void 0 && typeof input.content !== "string" || input.frontmatter !== void 0 && !isJsonRecord2(input.frontmatter) || input.provenance !== void 0 && !isJsonRecord2(input.provenance) || input.details !== void 0 && !isJsonRecord2(input.details) || input.sensitivity !== void 0 && !isBrainSensitivity2(input.sensitivity)) {
     throw validationError("brain_update arguments have invalid field types");
   }
   return {
@@ -5074,7 +7220,7 @@ function parseRegistryMcpPublish(value) {
   };
 }
 function strictObject(value, allowedKeys) {
-  if (!isRecord5(value)) throw validationError("Tool arguments must be an object");
+  if (!isRecord10(value)) throw validationError("Tool arguments must be an object");
   const unknown = unknownKeys(value, allowedKeys);
   if (unknown.length > 0) throw validationError(`Unknown tool arguments: ${unknown.sort().join(", ")}`);
   return value;
@@ -5142,7 +7288,7 @@ function retrieveFilters(value) {
   const input = strictObject(value, ["types", "layers", "sensitivities", "statuses", "updatedAfter", "updatedBefore", "hasSource"]);
   const types = optionalArray(input.types, isBrainArtifactType2, "filters.types");
   const layers = optionalArray(input.layers, isBrainArtifactLayer2, "filters.layers");
-  const sensitivities2 = optionalArray(input.sensitivities, isBrainSensitivity2, "filters.sensitivities");
+  const sensitivities3 = optionalArray(input.sensitivities, isBrainSensitivity2, "filters.sensitivities");
   const statuses = optionalArray(input.statuses, isKnowledgeStatus2, "filters.statuses");
   if (input.updatedAfter !== void 0 && typeof input.updatedAfter !== "string" || input.updatedBefore !== void 0 && typeof input.updatedBefore !== "string" || input.hasSource !== void 0 && typeof input.hasSource !== "boolean") {
     throw validationError("brain_retrieve filters have invalid field types");
@@ -5150,7 +7296,7 @@ function retrieveFilters(value) {
   return {
     ...types === void 0 ? {} : { types },
     ...layers === void 0 ? {} : { layers },
-    ...sensitivities2 === void 0 ? {} : { sensitivities: sensitivities2 },
+    ...sensitivities3 === void 0 ? {} : { sensitivities: sensitivities3 },
     ...statuses === void 0 ? {} : { statuses },
     ...input.updatedAfter === void 0 ? {} : { updatedAfter: input.updatedAfter },
     ...input.updatedBefore === void 0 ? {} : { updatedBefore: input.updatedBefore },
@@ -5204,7 +7350,7 @@ function remoteToolError(error) {
     error: {
       code: typeof source.code === "string" ? source.code : "BRIDGE_REMOTE_ERROR",
       message: error instanceof Error ? error.message : "Remote brain request failed",
-      ...isRecord6(source.details) ? { details: source.details } : {}
+      ...isRecord11(source.details) ? { details: source.details } : {}
     }
   };
   return {
@@ -5216,7 +7362,7 @@ function remoteToolError(error) {
 function errorRecord(error) {
   return typeof error === "object" && error !== null ? error : {};
 }
-function isRecord6(value) {
+function isRecord11(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -5252,7 +7398,7 @@ function parseInitializeParams(value) {
     -32602,
     "Invalid initialize params"
   );
-  if (typeof input.protocolVersion !== "string" || input.protocolVersion.length === 0 || !isRecord7(input.capabilities) || typeof clientInfo.name !== "string" || clientInfo.name.length === 0 || typeof clientInfo.version !== "string" || clientInfo.version.length === 0) {
+  if (typeof input.protocolVersion !== "string" || input.protocolVersion.length === 0 || !isRecord12(input.capabilities) || typeof clientInfo.name !== "string" || clientInfo.name.length === 0 || typeof clientInfo.version !== "string" || clientInfo.version.length === 0) {
     throw new BridgeProtocolError(-32602, "Invalid initialize params");
   }
   return {
@@ -5263,17 +7409,17 @@ function parseInitializeParams(value) {
 }
 function parseEmptyParams(value) {
   if (value === void 0) return;
-  strictParams(value, []);
+  strictParams(value, ["_meta"]);
 }
 function parseToolCallParams(value) {
-  const input = strictParams(value, ["name", "arguments"]);
-  if (!isToolName(input.name) || !isRecord7(input.arguments)) {
+  const input = strictParams(value, ["name", "arguments", "_meta"]);
+  if (!isToolName(input.name) || !isRecord12(input.arguments)) {
     throw new BridgeProtocolError(-32602, "Invalid tools/call params");
   }
   return { name: input.name, arguments: input.arguments };
 }
 function requestIdFrom(value) {
-  if (!isRecord7(value) || !("id" in value)) return null;
+  if (!isRecord12(value) || !("id" in value)) return null;
   try {
     return parseId(value.id) ?? null;
   } catch {
@@ -5284,7 +7430,7 @@ function strictParams(value, keys) {
   return strictObject2(value ?? {}, keys, -32602, "Invalid params");
 }
 function strictObject2(value, keys, code, message2) {
-  if (!isRecord7(value) || Object.keys(value).some((key) => !keys.includes(key))) {
+  if (!isRecord12(value) || Object.keys(value).some((key) => !keys.includes(key))) {
     throw new BridgeProtocolError(code, message2);
   }
   return value;
@@ -5297,7 +7443,7 @@ function parseId(value) {
 function isToolName(value) {
   return typeof value === "string" && (brainToolNames.has(value) || skillToolNames.has(value));
 }
-function isRecord7(value) {
+function isRecord12(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -5333,7 +7479,7 @@ function createBridgeServer(options) {
       return success(id, {
         protocolVersion: params.protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "skillloom-bridge", version: "0.3.4" }
+        serverInfo: { name: "skillloom-bridge", version: "0.3.8" }
       });
     }
     if (request.method === "ping") {
@@ -5372,10 +7518,10 @@ async function attemptSync(options) {
   try {
     await Promise.race([
       options.sync.syncOnce(controller.signal),
-      new Promise((_resolve, reject) => {
+      new Promise((_resolve, reject2) => {
         timeout = setTimeout(() => {
           controller.abort();
-          reject(new Error("Initial sync timed out"));
+          reject2(new Error("Initial sync timed out"));
         }, timeoutMs);
       })
     ]);
@@ -5444,9 +7590,9 @@ async function runBridgeStdio(options) {
 }
 
 // src/setup/defaults.ts
-import { readFile as readFile15 } from "node:fs/promises";
+import { readFile as readFile20 } from "node:fs/promises";
 import { homedir as homedir4 } from "node:os";
-import { join as join32 } from "node:path";
+import { join as join37 } from "node:path";
 
 // src/hub/config/constants.ts
 var HUB_CLIENT_STATE_VERSION = 1;
@@ -5466,30 +7612,30 @@ var HubPendingAcknowledgementError = class extends Error {
 };
 
 // src/hub/config/layout.ts
-import { join as join24 } from "node:path";
+import { join as join27 } from "node:path";
 function hubClientLayout(projectRoot) {
-  const root4 = join24(projectRoot, STORE_DIR, HUB_STATE_DIR);
+  const root4 = join27(projectRoot, STORE_DIR, HUB_STATE_DIR);
   return {
     root: root4,
-    trust: join24(root4, "trust.json"),
-    endpoint: join24(root4, "endpoint.json"),
-    sync: join24(root4, "sync.json"),
-    pending: join24(root4, "pending")
+    trust: join27(root4, "trust.json"),
+    endpoint: join27(root4, "endpoint.json"),
+    sync: join27(root4, "sync.json"),
+    pending: join27(root4, "pending")
   };
 }
 
 // src/hub/config/state.ts
-import { readFile as readFile11 } from "node:fs/promises";
+import { readFile as readFile14 } from "node:fs/promises";
 
 // src/hub/config/permissions.ts
-import { chmod as chmod2, mkdir as mkdir12 } from "node:fs/promises";
+import { chmod as chmod2, mkdir as mkdir16 } from "node:fs/promises";
 async function ensurePrivateDirectory(path) {
-  await mkdir12(path, { recursive: true, mode: 448 });
+  await mkdir16(path, { recursive: true, mode: 448 });
   await chmod2(path, 448);
 }
 
 // src/hub/config/schema.ts
-import { createHash as createHash6 } from "node:crypto";
+import { createHash as createHash7 } from "node:crypto";
 
 // src/hub/protocol/version.ts
 var HUB_PROTOCOL_VERSION = "1.0";
@@ -5544,7 +7690,7 @@ function parsePendingHubMutation(value) {
   };
 }
 function parseHubMutationAcknowledgement(value) {
-  if (!isRecord8(value) || !isUuid(value.requestId) || value.accepted !== true || !Object.hasOwn(value, "data")) {
+  if (!isRecord13(value) || !isUuid(value.requestId) || value.accepted !== true || !Object.hasOwn(value, "data")) {
     throw new HubStateValidationError("Invalid Hub mutation acknowledgement");
   }
   return { requestId: value.requestId, accepted: true, data: value.data };
@@ -5564,7 +7710,7 @@ function validateHubUrl(value, allowLoopbackHttp) {
   return url.origin;
 }
 function exactRecord(value, keys, label) {
-  if (!isRecord8(value) || Object.keys(value).some((key) => !keys.includes(key)) || keys.some((key) => !(key in value))) {
+  if (!isRecord13(value) || Object.keys(value).some((key) => !keys.includes(key)) || keys.some((key) => !(key in value))) {
     throw new HubStateValidationError(`${label} state has an invalid shape`);
   }
   return value;
@@ -5582,9 +7728,9 @@ function isUuid(value) {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 function bodyDigest(body) {
-  return `sha256:${createHash6("sha256").update(body).digest("base64url")}`;
+  return `sha256:${createHash7("sha256").update(body).digest("base64url")}`;
 }
-function isRecord8(value) {
+function isRecord13(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -5613,7 +7759,7 @@ async function writeState(root4, path, value) {
 }
 async function readOptionalJson(path, parse2) {
   try {
-    return parse2(JSON.parse(await readFile11(path, "utf8")));
+    return parse2(JSON.parse(await readFile14(path, "utf8")));
   } catch (error) {
     if (isMissing(error)) return null;
     throw error;
@@ -5624,9 +7770,9 @@ function isMissing(error) {
 }
 
 // src/hub/config/pending.ts
-import { createHash as createHash7 } from "node:crypto";
-import { readdir as readdir7, readFile as readFile12, rm as rm9 } from "node:fs/promises";
-import { join as join25 } from "node:path";
+import { createHash as createHash8 } from "node:crypto";
+import { readdir as readdir9, readFile as readFile15, rm as rm11 } from "node:fs/promises";
+import { join as join28 } from "node:path";
 async function enqueuePendingMutation(root4, input) {
   const pending = parsePendingHubMutation({
     ...input,
@@ -5652,12 +7798,12 @@ async function readHubPendingMutations(root4) {
   const directory = hubClientLayout(root4).pending;
   let names;
   try {
-    names = (await readdir7(directory)).filter((name) => name.endsWith(".json")).sort();
+    names = (await readdir9(directory)).filter((name) => name.endsWith(".json")).sort();
   } catch (error) {
     if (isMissing2(error)) return [];
     throw error;
   }
-  return await Promise.all(names.map(async (name) => parsePendingHubMutation(JSON.parse(await readFile12(join25(directory, name), "utf8")))));
+  return await Promise.all(names.map(async (name) => parsePendingHubMutation(JSON.parse(await readFile15(join28(directory, name), "utf8")))));
 }
 async function acknowledgePendingMutation(root4, requestId2, acknowledgement) {
   const parsedAcknowledgement = parseHubMutationAcknowledgement(acknowledgement);
@@ -5667,18 +7813,18 @@ async function acknowledgePendingMutation(root4, requestId2, acknowledgement) {
   const directory = hubClientLayout(root4).pending;
   const pending = await readOptionalPending(pendingPath(directory, requestId2));
   if (!pending) throw new HubPendingAcknowledgementError(`Pending request ${requestId2} does not exist`);
-  await rm9(pendingPath(directory, requestId2));
+  await rm11(pendingPath(directory, requestId2));
   await syncDirectory(directory);
 }
 function pendingPath(directory, requestId2) {
-  return join25(directory, `${createHash7("sha256").update(requestId2).digest("hex")}.json`);
+  return join28(directory, `${createHash8("sha256").update(requestId2).digest("hex")}.json`);
 }
 function digest3(body) {
-  return `sha256:${createHash7("sha256").update(body).digest("base64url")}`;
+  return `sha256:${createHash8("sha256").update(body).digest("base64url")}`;
 }
 async function readOptionalPending(path) {
   try {
-    return parsePendingHubMutation(JSON.parse(await readFile12(path, "utf8")));
+    return parsePendingHubMutation(JSON.parse(await readFile15(path, "utf8")));
   } catch (error) {
     if (isMissing2(error)) return null;
     throw error;
@@ -5741,19 +7887,19 @@ var HubStableReleaseNotFoundError = class extends HubClientError {
 
 // src/hub/client/brain-response.ts
 function parseBrainDataEnvelope(value, parse2) {
-  if (!isRecord5(value) || !Object.hasOwn(value, "data")) throw invalid("Hub response is missing data");
+  if (!isRecord10(value) || !Object.hasOwn(value, "data")) throw invalid("Hub response is missing data");
   return parse2(value.data);
 }
 function parseBrainSearchResults(value) {
   if (!Array.isArray(value)) throw invalid("Brain search data must be an array");
   return value.map((item) => {
     const metadata2 = parseArtifactMetadata(item);
-    if (!isRecord5(item) || typeof item.excerpt !== "string") throw invalid("Brain search result is malformed");
+    if (!isRecord10(item) || typeof item.excerpt !== "string") throw invalid("Brain search result is malformed");
     return { ...metadata2, excerpt: item.excerpt };
   });
 }
 function parseBrainRetrievalResult(value) {
-  if (!isRecord5(value) || value.tier !== "quick" && value.tier !== "standard" && value.tier !== "deep" || typeof value.query !== "string" || !isRecord5(value.filters) || !Array.isArray(value.results) || !Array.isArray(value.hotContext) || typeof value.recoveredIndex !== "boolean" || value.health !== void 0 && !isRecord5(value.health)) {
+  if (!isRecord10(value) || value.tier !== "quick" && value.tier !== "standard" && value.tier !== "deep" || typeof value.query !== "string" || !isRecord10(value.filters) || !Array.isArray(value.results) || !Array.isArray(value.hotContext) || typeof value.recoveredIndex !== "boolean" || value.health !== void 0 && !isRecord10(value.health)) {
     throw invalid("Brain retrieval result is malformed");
   }
   return {
@@ -5767,7 +7913,7 @@ function parseBrainRetrievalResult(value) {
   };
 }
 function parseBrainHealthReport(value) {
-  if (!isRecord5(value) || value.status !== "ok" && value.status !== "degraded" || typeof value.checkedAt !== "string" || typeof value.canonicalArtifacts !== "number" || typeof value.indexedArtifacts !== "number" || typeof value.auditEvents !== "number" || typeof value.indexedAuditEvents !== "number" || typeof value.indexedLinks !== "number" || typeof value.unresolvedGaps !== "number" || typeof value.contradictions !== "number" || typeof value.recoveredIndex !== "boolean" || !Array.isArray(value.issues) || !Array.isArray(value.recommendations) || !value.recommendations.every((item) => typeof item === "string")) {
+  if (!isRecord10(value) || value.status !== "ok" && value.status !== "degraded" || typeof value.checkedAt !== "string" || typeof value.canonicalArtifacts !== "number" || typeof value.indexedArtifacts !== "number" || typeof value.auditEvents !== "number" || typeof value.indexedAuditEvents !== "number" || typeof value.indexedLinks !== "number" || typeof value.unresolvedGaps !== "number" || typeof value.contradictions !== "number" || typeof value.recoveredIndex !== "boolean" || !Array.isArray(value.issues) || !Array.isArray(value.recommendations) || !value.recommendations.every((item) => typeof item === "string")) {
     throw invalid("Brain health report is malformed");
   }
   return {
@@ -5787,23 +7933,23 @@ function parseBrainHealthReport(value) {
 }
 function parseBrainArtifact2(value) {
   const metadata2 = parseArtifactMetadata(value);
-  if (!isRecord5(value) || typeof value.content !== "string") throw invalid("Brain artifact content is malformed");
+  if (!isRecord10(value) || typeof value.content !== "string") throw invalid("Brain artifact content is malformed");
   return { ...metadata2, content: value.content };
 }
 function parseBrainArtifactMutation(value) {
-  if (!isRecord5(value) || value.kind !== "artifact" || typeof value.eventSequence !== "string") {
+  if (!isRecord10(value) || value.kind !== "artifact" || typeof value.eventSequence !== "string") {
     throw invalid("Brain artifact mutation result is malformed");
   }
   return { kind: "artifact", artifact: parseArtifactMetadata(value.artifact), eventSequence: value.eventSequence };
 }
 function parseBrainLinkMutation(value) {
-  if (!isRecord5(value) || value.kind !== "link" || typeof value.eventSequence !== "string") {
+  if (!isRecord10(value) || value.kind !== "link" || typeof value.eventSequence !== "string") {
     throw invalid("Brain link mutation result is malformed");
   }
-  return { kind: "link", link: parseLink(value.link), eventSequence: value.eventSequence };
+  return { kind: "link", link: parseLink2(value.link), eventSequence: value.eventSequence };
 }
 function parseArtifactMetadata(value) {
-  if (!isRecord5(value) || typeof value.id !== "string" || !isBrainArtifactType2(value.type) || typeof value.path !== "string" || typeof value.revision !== "string" || typeof value.contentHash !== "string" || typeof value.title !== "string" || !isJsonRecord(value.frontmatter) || !isJsonRecord(value.provenance) || !isBrainSensitivity2(value.sensitivity) || value.layer !== void 0 && !isBrainArtifactLayer2(value.layer) || value.source !== void 0 && !isJsonRecord(value.source) || value.details !== void 0 && !isJsonRecord(value.details) || typeof value.createdAt !== "string" || typeof value.createdBy !== "string" || typeof value.updatedAt !== "string" || typeof value.updatedBy !== "string") {
+  if (!isRecord10(value) || typeof value.id !== "string" || !isBrainArtifactType2(value.type) || typeof value.path !== "string" || typeof value.revision !== "string" || typeof value.contentHash !== "string" || typeof value.title !== "string" || !isJsonRecord2(value.frontmatter) || !isJsonRecord2(value.provenance) || !isBrainSensitivity2(value.sensitivity) || value.layer !== void 0 && !isBrainArtifactLayer2(value.layer) || value.source !== void 0 && !isJsonRecord2(value.source) || value.details !== void 0 && !isJsonRecord2(value.details) || typeof value.createdAt !== "string" || typeof value.createdBy !== "string" || typeof value.updatedAt !== "string" || typeof value.updatedBy !== "string") {
     throw invalid("Brain artifact metadata is malformed");
   }
   return {
@@ -5825,8 +7971,8 @@ function parseArtifactMetadata(value) {
     updatedBy: value.updatedBy
   };
 }
-function parseLink(value) {
-  if (!isRecord5(value) || typeof value.id !== "string" || typeof value.sourceArtifactId !== "string" || typeof value.targetArtifactId !== "string" || typeof value.relationship !== "string" || typeof value.createdAt !== "string" || typeof value.createdBy !== "string") {
+function parseLink2(value) {
+  if (!isRecord10(value) || typeof value.id !== "string" || typeof value.sourceArtifactId !== "string" || typeof value.targetArtifactId !== "string" || typeof value.relationship !== "string" || typeof value.createdAt !== "string" || typeof value.createdBy !== "string") {
     throw invalid("Brain link is malformed");
   }
   return {
@@ -5840,7 +7986,7 @@ function parseLink(value) {
 }
 function parseBrainRetrievalItem(value) {
   const metadata2 = parseArtifactMetadata(value);
-  if (!isRecord5(value) || typeof value.excerpt !== "string" || typeof value.score !== "number" || typeof value.graphDistance !== "number" || !Array.isArray(value.reasons) || !isRecord5(value.decorations)) {
+  if (!isRecord10(value) || typeof value.excerpt !== "string" || typeof value.score !== "number" || typeof value.graphDistance !== "number" || !Array.isArray(value.reasons) || !isRecord10(value.decorations)) {
     throw invalid("Brain retrieval item is malformed");
   }
   if (!Array.isArray(value.decorations.contradictions) || !Array.isArray(value.decorations.gaps)) {
@@ -5859,25 +8005,25 @@ function parseBrainRetrievalItem(value) {
   };
 }
 function parseRetrievalReason(value) {
-  if (!isRecord5(value) || value.kind !== "title" && value.kind !== "content" && value.kind !== "metadata" && value.kind !== "graph" && value.kind !== "freshness" || typeof value.weight !== "number" || typeof value.detail !== "string") {
+  if (!isRecord10(value) || value.kind !== "title" && value.kind !== "content" && value.kind !== "metadata" && value.kind !== "graph" && value.kind !== "freshness" || typeof value.weight !== "number" || typeof value.detail !== "string") {
     throw invalid("Brain retrieval reason is malformed");
   }
   return { kind: value.kind, weight: value.weight, detail: value.detail };
 }
 function parseRetrievalDecoration(value) {
-  if (!isRecord5(value) || value.relationship !== "contradicts" && value.relationship !== "fills-gap") {
+  if (!isRecord10(value) || value.relationship !== "contradicts" && value.relationship !== "fills-gap") {
     throw invalid("Brain retrieval decoration is malformed");
   }
-  return { artifact: parseArtifactMetadata(value.artifact), relationship: value.relationship, link: parseLink(value.link) };
+  return { artifact: parseArtifactMetadata(value.artifact), relationship: value.relationship, link: parseLink2(value.link) };
 }
 function parseHotContextItem(value) {
-  if (!isRecord5(value) || typeof value.artifactId !== "string" || !isBrainArtifactType2(value.type) || typeof value.title !== "string" || typeof value.score !== "number" || typeof value.excerpt !== "string" || typeof value.content !== "string") {
+  if (!isRecord10(value) || typeof value.artifactId !== "string" || !isBrainArtifactType2(value.type) || typeof value.title !== "string" || typeof value.score !== "number" || typeof value.excerpt !== "string" || typeof value.content !== "string") {
     throw invalid("Brain hot context item is malformed");
   }
   return { artifactId: value.artifactId, type: value.type, title: value.title, score: value.score, excerpt: value.excerpt, content: value.content };
 }
 function parseHealthIssue(value) {
-  if (!isRecord5(value) || !isHealthIssueCode(value.code) || value.severity !== "warning" && value.severity !== "error" || typeof value.detail !== "string" || value.artifactId !== void 0 && typeof value.artifactId !== "string" || value.linkId !== void 0 && typeof value.linkId !== "string" || value.eventSequence !== void 0 && typeof value.eventSequence !== "string") {
+  if (!isRecord10(value) || !isHealthIssueCode(value.code) || value.severity !== "warning" && value.severity !== "error" || typeof value.detail !== "string" || value.artifactId !== void 0 && typeof value.artifactId !== "string" || value.linkId !== void 0 && typeof value.linkId !== "string" || value.eventSequence !== void 0 && typeof value.eventSequence !== "string") {
     throw invalid("Brain health issue is malformed");
   }
   return {
@@ -6055,7 +8201,7 @@ var HubClientVersionUnsupportedError = class extends HubProtocolError {
 };
 
 // src/hub/protocol/signing-key.ts
-import { createHash as createHash8, createPublicKey } from "node:crypto";
+import { createHash as createHash9, createPublicKey } from "node:crypto";
 function canonicalSigningKeyFingerprint(publicKey) {
   try {
     const key = createPublicKey(publicKey);
@@ -6063,7 +8209,7 @@ function canonicalSigningKeyFingerprint(publicKey) {
       throw new Error("not Ed25519");
     }
     const spki = key.export({ type: "spki", format: "der" });
-    return `sha256:${createHash8("sha256").update(spki).digest("base64url")}`;
+    return `sha256:${createHash9("sha256").update(spki).digest("base64url")}`;
   } catch {
     throw new HubProtocolValidationError("releaseSigningPublicKey must be a valid Ed25519 SPKI public key");
   }
@@ -6071,7 +8217,7 @@ function canonicalSigningKeyFingerprint(publicKey) {
 
 // src/hub/protocol/schema.ts
 function parseNegotiationResponse(value, compatibility) {
-  if (!isRecord9(value)) throw new HubProtocolValidationError("Negotiation response must be an object");
+  if (!isRecord14(value)) throw new HubProtocolValidationError("Negotiation response must be an object");
   const protocolVersion = requiredVersion(value.protocolVersion, "protocolVersion");
   const minimumClientVersion = requiredVersion(value.minimumClientVersion, "minimumClientVersion");
   if (major(protocolVersion) !== major(compatibility.protocolVersion)) {
@@ -6080,7 +8226,7 @@ function parseNegotiationResponse(value, compatibility) {
   if (compareVersions(compatibility.clientVersion, minimumClientVersion) < 0) {
     throw new HubClientVersionUnsupportedError(compatibility.clientVersion, minimumClientVersion);
   }
-  const releaseSigningPublicKey = requiredString(value.releaseSigningPublicKey, "releaseSigningPublicKey");
+  const releaseSigningPublicKey = requiredString2(value.releaseSigningPublicKey, "releaseSigningPublicKey");
   canonicalSigningKeyFingerprint(releaseSigningPublicKey);
   if (!isCanonicalEventSequence(value.latestEventSequence)) {
     throw new HubProtocolValidationError("latestEventSequence must be a canonical nonnegative decimal string");
@@ -6088,7 +8234,7 @@ function parseNegotiationResponse(value, compatibility) {
   return {
     protocolVersion,
     minimumClientVersion,
-    hubInstanceId: requiredString(value.hubInstanceId, "hubInstanceId"),
+    hubInstanceId: requiredString2(value.hubInstanceId, "hubInstanceId"),
     tailnetIdentity: parseTailnetIdentity(value.tailnetIdentity),
     grantedCapabilities: stringArray(value.grantedCapabilities, "grantedCapabilities"),
     releaseSigningPublicKey,
@@ -6096,14 +8242,14 @@ function parseNegotiationResponse(value, compatibility) {
   };
 }
 function parseTailnetIdentity(value) {
-  if (!isRecord9(value)) throw new HubProtocolValidationError("tailnetIdentity must be an object");
+  if (!isRecord14(value)) throw new HubProtocolValidationError("tailnetIdentity must be an object");
   const kind = value.kind;
   if (kind !== "user" && kind !== "node") throw new HubProtocolValidationError("tailnetIdentity.kind is invalid");
-  const actorId = requiredString(value.actorId, "tailnetIdentity.actorId");
+  const actorId = requiredString2(value.actorId, "tailnetIdentity.actorId");
   if (!actorId.startsWith(`${kind}:`)) throw new HubProtocolValidationError("tailnetIdentity.actorId does not match its kind");
-  const displayName = optionalString3(value.displayName, "tailnetIdentity.displayName");
-  const nodeId = optionalString3(value.nodeId, "tailnetIdentity.nodeId");
-  const nodeName = optionalString3(value.nodeName, "tailnetIdentity.nodeName");
+  const displayName = optionalString4(value.displayName, "tailnetIdentity.displayName");
+  const nodeId = optionalString4(value.nodeId, "tailnetIdentity.nodeId");
+  const nodeName = optionalString4(value.nodeName, "tailnetIdentity.nodeName");
   return {
     actorId,
     kind,
@@ -6113,7 +8259,7 @@ function parseTailnetIdentity(value) {
   };
 }
 function requiredVersion(value, field) {
-  const version = requiredString(value, field);
+  const version = requiredString2(value, field);
   if (!/^\d+\.\d+(?:\.\d+)?$/.test(version)) throw new HubProtocolValidationError(`${field} must be a numeric version`);
   return version;
 }
@@ -6132,12 +8278,12 @@ function numericVersion(version) {
   if (!/^\d+\.\d+(?:\.\d+)?$/.test(version)) throw new HubProtocolValidationError(`Invalid version ${version}`);
   return version.split(".").map(Number);
 }
-function requiredString(value, field) {
+function requiredString2(value, field) {
   if (typeof value !== "string" || value.trim().length === 0) throw new HubProtocolValidationError(`${field} must be a non-empty string`);
   return value.trim();
 }
-function optionalString3(value, field) {
-  return value === void 0 ? void 0 : requiredString(value, field);
+function optionalString4(value, field) {
+  return value === void 0 ? void 0 : requiredString2(value, field);
 }
 function stringArray(value, field) {
   if (!Array.isArray(value) || !value.every((item) => typeof item === "string" && item.trim().length > 0)) {
@@ -6145,7 +8291,7 @@ function stringArray(value, field) {
   }
   return [...new Set(value.map((item) => item.trim()))].sort();
 }
-function isRecord9(value) {
+function isRecord14(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -6159,9 +8305,9 @@ async function negotiateHub(client, clientVersion) {
 }
 
 // src/hub/client/release-materialize.ts
-import { createHash as createHash10, randomUUID as randomUUID8 } from "node:crypto";
-import { chmod as chmod4, mkdir as mkdir14, mkdtemp as mkdtemp2, rm as rm11, writeFile as writeFile3 } from "node:fs/promises";
-import { dirname as dirname13, join as join27 } from "node:path";
+import { createHash as createHash11, randomUUID as randomUUID8 } from "node:crypto";
+import { chmod as chmod4, mkdir as mkdir18, mkdtemp as mkdtemp2, rm as rm13, writeFile as writeFile3 } from "node:fs/promises";
+import { dirname as dirname16, join as join30 } from "node:path";
 
 // src/hub/registry/errors.ts
 var RegistryValidationError = class extends Error {
@@ -6266,9 +8412,9 @@ function validateUnicode(value) {
 }
 
 // src/hub/registry/package-blob.ts
-import { chmod as chmod3, mkdir as mkdir13, mkdtemp, rm as rm10, writeFile as writeFile2 } from "node:fs/promises";
+import { chmod as chmod3, mkdir as mkdir17, mkdtemp, rm as rm12, writeFile as writeFile2 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname as dirname12, join as join26, posix as posix2 } from "node:path";
+import { dirname as dirname15, join as join29, posix as posix2 } from "node:path";
 function parsePackageBlob(value) {
   const record = strictRecord2(value, ["schemaVersion", "files"], "package blob");
   if (record.schemaVersion !== "skillloom-package-blob-v1") throw new RegistryPackageError("Unsupported package blob schemaVersion");
@@ -6291,20 +8437,20 @@ function parsePackageBlob(value) {
 }
 async function hashPackageBlob(value) {
   const blob = parsePackageBlob(value);
-  const root4 = await mkdtemp(join26(tmpdir(), "skillloom-registry-package-"));
+  const root4 = await mkdtemp(join29(tmpdir(), "skillloom-registry-package-"));
   try {
     const files2 = [];
     for (const file2 of blob.files) {
-      const absolutePath = join26(root4, ...file2.relativePath.split("/"));
+      const absolutePath = join29(root4, ...file2.relativePath.split("/"));
       const content = decodeBase64(file2.contentBase64, file2.relativePath);
-      await mkdir13(dirname12(absolutePath), { recursive: true });
+      await mkdir17(dirname15(absolutePath), { recursive: true });
       await writeFile2(absolutePath, content, { flag: "wx" });
       await chmod3(absolutePath, file2.mode);
       files2.push({ relativePath: file2.relativePath, absolutePath, size: content.byteLength, mode: file2.mode });
     }
     return await hashPackage(files2);
   } finally {
-    await rm10(root4, { recursive: true, force: true });
+    await rm12(root4, { recursive: true, force: true });
   }
 }
 function parseFile(value, index) {
@@ -6496,7 +8642,7 @@ function parseManifestRelease(value, index) {
   };
 }
 function parseDivergence(value) {
-  if (!isRecord10(value) || typeof value.state !== "string") throw new RegistryValidationError("divergence must be an object");
+  if (!isRecord15(value) || typeof value.state !== "string") throw new RegistryValidationError("divergence must be an object");
   if (value.state === "aligned") {
     strictRecord3(value, ["state"], "divergence");
     return { state: "aligned" };
@@ -6508,7 +8654,7 @@ function parseDivergence(value) {
   throw new RegistryValidationError("divergence.state is invalid");
 }
 function parseSupersession(value) {
-  if (!isRecord10(value) || typeof value.state !== "string") throw new RegistryValidationError("supersession must be an object");
+  if (!isRecord15(value) || typeof value.state !== "string") throw new RegistryValidationError("supersession must be an object");
   if (value.state === "active") {
     strictRecord3(value, ["state"], "supersession");
     return { state: "active" };
@@ -6541,7 +8687,7 @@ function parseCapabilities2(value) {
   return [...value];
 }
 function strictRecord3(value, keys, field) {
-  if (!isRecord10(value)) throw new RegistryValidationError(`${field} must be an object`);
+  if (!isRecord15(value)) throw new RegistryValidationError(`${field} must be an object`);
   const expected = new Set(keys);
   const ownKeys = Reflect.ownKeys(value);
   if (ownKeys.some((key) => typeof key !== "string")) throw new RegistryValidationError(`${field} contains an unexpected symbol field`);
@@ -6604,7 +8750,7 @@ function unique(values, field) {
 function registryError(message2) {
   return new RegistryValidationError(message2);
 }
-function isRecord10(value) {
+function isRecord15(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
 }
 function deepFreeze(value) {
@@ -6667,9 +8813,9 @@ function publicEd25519Key(input) {
 }
 
 // src/hub/registry/server-hash.ts
-import { createHash as createHash9 } from "node:crypto";
+import { createHash as createHash10 } from "node:crypto";
 function hashRegistryPayload(value) {
-  return `sha256:${createHash9("sha256").update(canonicalizeJson(value)).digest("hex")}`;
+  return `sha256:${createHash10("sha256").update(canonicalizeJson(value)).digest("hex")}`;
 }
 
 // src/hub/registry/server-schema.ts
@@ -6770,14 +8916,14 @@ function list(value, parse2) {
   return value.map(parse2);
 }
 function exactRecord2(value, required, optional = []) {
-  if (!isRecord11(value)) throw new RegistryValidationError("Expected a plain object");
+  if (!isRecord16(value)) throw new RegistryValidationError("Expected a plain object");
   const allowed = /* @__PURE__ */ new Set([...required, ...optional]);
   if (Object.keys(value).some((key) => !allowed.has(key)) || required.some((key) => !Object.hasOwn(value, key))) {
     throw new RegistryValidationError("Registry record has an invalid shape");
   }
   return value;
 }
-function isRecord11(value) {
+function isRecord16(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
 }
 function text3(value, field) {
@@ -6802,11 +8948,11 @@ async function materializeHubReleaseCandidate(root4, verified) {
   const candidateId = localCandidateId(release.sourceCandidateId, release.hubInstanceId, release.releaseId);
   const reference = candidateReference(candidateId, verified);
   const layout = storeLayout(root4);
-  await mkdir14(layout.staging, { recursive: true });
-  const importRoot = await mkdtemp2(join27(layout.staging, "hub-release-"));
+  await mkdir18(layout.staging, { recursive: true });
+  const importRoot = await mkdtemp2(join30(layout.staging, "hub-release-"));
   let snapshot;
   try {
-    const skillRoot = join27(importRoot, "skill");
+    const skillRoot = join30(importRoot, "skill");
     await writePackageBlob(skillRoot, verified.blob);
     const validation = await validateSkillPackage(skillRoot, {
       expectedName: release.name,
@@ -6848,15 +8994,15 @@ async function materializeHubReleaseCandidate(root4, verified) {
     }
   } finally {
     if (snapshot) await discardCandidateSnapshot(snapshot).catch(() => void 0);
-    await rm11(importRoot, { recursive: true, force: true });
+    await rm13(importRoot, { recursive: true, force: true });
   }
 }
 async function writePackageBlob(root4, value) {
   const blob = parsePackageBlob(value);
-  await mkdir14(root4);
+  await mkdir18(root4);
   for (const file2 of blob.files) {
-    const path = join27(root4, ...file2.relativePath.split("/"));
-    await mkdir14(dirname13(path), { recursive: true });
+    const path = join30(root4, ...file2.relativePath.split("/"));
+    await mkdir18(dirname16(path), { recursive: true });
     await writeFile3(path, Buffer.from(file2.contentBase64, "base64"), { flag: "wx" });
     await chmod4(path, file2.mode);
   }
@@ -6875,7 +9021,7 @@ function candidateReference(candidateId, verified) {
 }
 function localCandidateId(sourceCandidateId, hubInstanceId, releaseId) {
   if (sourceCandidateId.length <= 120 && /^cand-[a-zA-Z0-9-]+$/.test(sourceCandidateId)) return sourceCandidateId;
-  const stable = createHash10("sha256").update(`${hubInstanceId}\0${sourceCandidateId}\0${releaseId}`).digest("hex").slice(0, 24);
+  const stable = createHash11("sha256").update(`${hubInstanceId}\0${sourceCandidateId}\0${releaseId}`).digest("hex").slice(0, 24);
   return `cand-hub-${stable}`;
 }
 async function readCandidateIfPresent(root4, candidateId) {
@@ -7093,12 +9239,12 @@ function parseRegistryBlobEnvelope(value) {
   return parsePackageBlob(parseDataEnvelope(value));
 }
 function parseDataEnvelope(value) {
-  if (!isRecord12(value) || Object.keys(value).length !== 1 || !Object.hasOwn(value, "data")) {
+  if (!isRecord17(value) || Object.keys(value).length !== 1 || !Object.hasOwn(value, "data")) {
     throw new HubResponseValidationError("Registry response envelope is invalid");
   }
   return value.data;
 }
-function isRecord12(value) {
+function isRecord17(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
 }
 
@@ -7287,7 +9433,7 @@ var MAX_HUB_RETRY_ATTEMPTS = 10;
 var MAX_HUB_RETRY_DELAY_MS = 6e4;
 var SYSTEM_HUB_CLOCK = {
   now: () => Date.now(),
-  sleep: async (milliseconds) => await new Promise((resolve9) => setTimeout(resolve9, milliseconds))
+  sleep: async (milliseconds) => await new Promise((resolve11) => setTimeout(resolve11, milliseconds))
 };
 var timeoutSequence = 0;
 var systemTimeouts = /* @__PURE__ */ new Map();
@@ -7451,14 +9597,14 @@ async function readTailscaleMagicDnsSuffix(process2) {
   } catch (error) {
     throw new HubDiscoveryConfigurationError("tailscale status did not return JSON", { cause: error });
   }
-  if (!isRecord13(value) || typeof value.MagicDNSSuffix !== "string") {
+  if (!isRecord18(value) || typeof value.MagicDNSSuffix !== "string") {
     throw new HubDiscoveryConfigurationError("tailscale status is missing MagicDNSSuffix");
   }
   const suffix = value.MagicDNSSuffix.trim().replace(/\.$/, "").toLowerCase();
   if (suffix.length === 0) throw new HubDiscoveryConfigurationError("tailscale status has an empty MagicDNSSuffix");
   return suffix;
 }
-function isRecord13(value) {
+function isRecord18(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -7543,7 +9689,7 @@ async function localBackendsHealthy(request = fetch) {
   }));
   return checks.every(Boolean);
 }
-async function waitForLocalBackends(probe = localBackendsHealthy, wait = async (milliseconds) => await new Promise((resolve9) => setTimeout(resolve9, milliseconds)), attempts = 60) {
+async function waitForLocalBackends(probe = localBackendsHealthy, wait = async (milliseconds) => await new Promise((resolve11) => setTimeout(resolve11, milliseconds)), attempts = 60) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (await probe()) return true;
     if (attempt + 1 < attempts) await wait(1e3);
@@ -7572,12 +9718,12 @@ async function hubCapabilitiesHealthy(processes, hubUrl, environment) {
   if (response.exitCode !== 0) return false;
   try {
     const body = JSON.parse(response.stdout);
-    return isRecord14(body) && isRecord14(body.tailnetIdentity) && typeof body.tailnetIdentity.actorId === "string" && Array.isArray(body.grantedCapabilities) && body.grantedCapabilities.includes("brain:read") && body.grantedCapabilities.includes("skill:read");
+    return isRecord19(body) && isRecord19(body.tailnetIdentity) && typeof body.tailnetIdentity.actorId === "string" && Array.isArray(body.grantedCapabilities) && body.grantedCapabilities.includes("brain:read") && body.grantedCapabilities.includes("skill:read");
   } catch {
     return false;
   }
 }
-function isRecord14(value) {
+function isRecord19(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -7588,9 +9734,9 @@ async function ensureDockerReady(processes, docker, options) {
   if (options.platform !== "darwin") {
     throw new UsageError("Docker is installed but its daemon is not running; start Docker and rerun setup");
   }
-  const open4 = await processes.findExecutable("open");
-  if (!open4) throw new UsageError("Docker Desktop is installed but Skillloom could not start it; open Docker and rerun setup");
-  const start = await processes.run(open4, ["-a", "Docker"], options.env);
+  const open5 = await processes.findExecutable("open");
+  if (!open5) throw new UsageError("Docker Desktop is installed but Skillloom could not start it; open Docker and rerun setup");
+  const start = await processes.run(open5, ["-a", "Docker"], options.env);
   if (start.exitCode !== 0) throw new UsageError("Docker Desktop could not be started; open Docker and rerun setup");
   const wait = options.wait ?? delay;
   const deadline = Date.now() + 6e4;
@@ -7612,11 +9758,11 @@ function loginNameFromTailscaleStatus(stdout) {
   } catch {
     return null;
   }
-  if (!isRecord15(value) || !isRecord15(value.Self) || !isRecord15(value.User)) return null;
+  if (!isRecord20(value) || !isRecord20(value.Self) || !isRecord20(value.User)) return null;
   const userId = value.Self.UserID;
   if (typeof userId !== "string" && typeof userId !== "number") return null;
   const user = value.User[String(userId)];
-  if (!isRecord15(user) || typeof user.LoginName !== "string") return null;
+  if (!isRecord20(user) || typeof user.LoginName !== "string") return null;
   const loginName = user.LoginName.trim();
   return loginName.length > 0 && !/[\u0000-\u001f\u007f]/u.test(loginName) ? loginName : null;
 }
@@ -7646,40 +9792,144 @@ function personalPolicyFragment(loginName) {
     ""
   ].join("\n");
 }
-function isRecord15(value) {
+function isRecord20(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// src/host/obsidian-workspace.ts
+import { readFile as readFile16 } from "node:fs/promises";
+import { join as join31 } from "node:path";
+var WORKSPACE_FILES = ["workspace.json", "workspace-mobile.json"];
+async function prepareObsidianWorkspace(vaultConfigRoot) {
+  await Promise.all(WORKSPACE_FILES.map(async (file2) => {
+    const path = join31(vaultConfigRoot, file2);
+    const source = await readWorkspace(path);
+    if (source === null) return;
+    const migrated = migrateWorkspaceValue(source.value);
+    const content = JSON.stringify(migrated);
+    if (content !== JSON.stringify(source.value)) {
+      await atomicWriteFile(path, content, { mode: 384 });
+    }
+  }));
+}
+async function readWorkspace(path) {
+  try {
+    return { value: JSON.parse(await readFile16(path, "utf8")) };
+  } catch (error) {
+    if (isMissing3(error)) return null;
+    if (error instanceof SyntaxError) throw new Error(`Obsidian workspace is malformed at ${path}`, { cause: error });
+    throw error;
+  }
+}
+function migrateWorkspaceValue(value) {
+  if (typeof value === "string") {
+    return value.replace(/^Library\.(?:next|previous)\//u, "Library/").replace(/^Library\/Bases(?=\/|$)/u, "Bases");
+  }
+  if (Array.isArray(value)) return value.map(migrateWorkspaceValue);
+  if (!isRecord21(value)) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, migrateWorkspaceValue(entry)]));
+}
+function isRecord21(value) {
+  return typeof value === "object" && value !== null;
+}
+function isMissing3(error) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+
 // src/host/state.ts
-import { access as access3, chmod as chmod5, mkdir as mkdir15 } from "node:fs/promises";
-import { join as join28 } from "node:path";
+import { access as access4, chmod as chmod5, mkdir as mkdir20 } from "node:fs/promises";
+import { join as join33 } from "node:path";
+
+// src/host/obsidian-profile.ts
+import { createHash as createHash12 } from "node:crypto";
+import { mkdir as mkdir19, readFile as readFile17 } from "node:fs/promises";
+import { join as join32 } from "node:path";
+var VAULT_PATH = "/config/Documents/Skillloom";
+async function prepareObsidianProfile(configRoot, now = Date.now()) {
+  const profileDirectory = join32(configRoot, ".config", "obsidian");
+  const profilePath = join32(profileDirectory, "obsidian.json");
+  await mkdir19(profileDirectory, { recursive: true, mode: 448 });
+  const current = await readProfile(profilePath);
+  const vaults = isRecord22(current.vaults) ? current.vaults : {};
+  const matchingEntry = Object.entries(vaults).find(([, value]) => isRecord22(value) && value.path === VAULT_PATH);
+  const vaultId = matchingEntry?.[0] ?? createHash12("sha256").update(VAULT_PATH).digest("hex").slice(0, 16);
+  const existingVault = isRecord22(vaults[vaultId]) ? vaults[vaultId] : {};
+  const nextVaults = Object.fromEntries(
+    Object.entries(vaults).map(([id, value]) => [
+      id,
+      isRecord22(value) ? { ...value, open: id === vaultId } : value
+    ])
+  );
+  nextVaults[vaultId] = {
+    ...existingVault,
+    path: VAULT_PATH,
+    ts: typeof existingVault.ts === "number" ? existingVault.ts : now,
+    open: true
+  };
+  await atomicWriteFile(profilePath, JSON.stringify({ ...current, vaults: nextVaults }), { mode: 384 });
+}
+async function readProfile(path) {
+  try {
+    const value = JSON.parse(await readFile17(path, "utf8"));
+    if (!isRecord22(value)) throw new Error("profile root must be an object");
+    return value;
+  } catch (error) {
+    if (isMissing4(error)) return {};
+    if (error instanceof SyntaxError) throw new Error(`Obsidian profile is malformed at ${path}`, { cause: error });
+    throw error;
+  }
+}
+function isRecord22(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function isMissing4(error) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+
+// src/host/state.ts
 async function prepareHostState(hostRoot, policyFragment) {
   const paths = hostPaths(hostRoot);
   await Promise.all([
     secureDirectory(hostRoot),
     secureDirectory(paths.data),
-    secureDirectory(paths.obsidianConfig)
+    secureDirectory(paths.obsidianConfig),
+    secureDirectory(paths.obsidianVaultConfig),
+    secureDirectory(paths.obsidianProjectionRoot),
+    secureDirectory(paths.obsidianVaultConfigMountpoint),
+    secureDirectory(paths.obsidianBasesMountpoint),
+    secureDirectory(paths.obsidianAuthoringMountpoint),
+    secureDirectory(paths.obsidianBases),
+    secureDirectory(paths.obsidianAuthoring)
   ]);
+  await prepareObsidianProfile(paths.obsidianConfig);
+  await prepareObsidianWorkspace(paths.obsidianVaultConfig);
   await atomicWriteFile(paths.envFile, hostEnvironment(paths), { mode: 384 });
   await atomicWriteFile(paths.policy, policyFragment, { mode: 384 });
   return paths;
 }
 async function hostStateExists(hostRoot) {
   try {
-    await access3(hostPaths(hostRoot).envFile);
+    await access4(hostPaths(hostRoot).envFile);
     return true;
   } catch (error) {
-    if (isMissing3(error)) return false;
+    if (isMissing5(error)) return false;
     throw error;
   }
 }
 function hostPaths(hostRoot) {
   return {
     root: hostRoot,
-    data: join28(hostRoot, "data"),
-    obsidianConfig: join28(hostRoot, "obsidian-config"),
-    envFile: join28(hostRoot, "host.env"),
-    policy: join28(hostRoot, "policy.hujson")
+    data: join33(hostRoot, "data"),
+    obsidianConfig: join33(hostRoot, "obsidian-config"),
+    obsidianVaultConfig: join33(hostRoot, "obsidian-config", "vault-config"),
+    obsidianProjectionRoot: join33(hostRoot, "data", "brain", "projections", "obsidian-vault"),
+    obsidianVaultConfigMountpoint: join33(hostRoot, "data", "brain", "projections", "obsidian-vault", ".obsidian"),
+    obsidianBasesMountpoint: join33(hostRoot, "data", "brain", "projections", "obsidian-vault", "Bases"),
+    obsidianAuthoringMountpoint: join33(hostRoot, "data", "brain", "projections", "obsidian-vault", "Authoring"),
+    obsidianBases: join33(hostRoot, "data", "brain", "obsidian-ui", "Bases"),
+    obsidianAuthoring: join33(hostRoot, "data", "brain", "authoring"),
+    envFile: join33(hostRoot, "host.env"),
+    policy: join33(hostRoot, "policy.hujson")
   };
 }
 function hostEnvironment(paths) {
@@ -7693,10 +9943,10 @@ function quote(value) {
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }
 async function secureDirectory(path) {
-  await mkdir15(path, { recursive: true, mode: 448 });
+  await mkdir20(path, { recursive: true, mode: 448 });
   await chmod5(path, 448);
 }
-function isMissing3(error) {
+function isMissing5(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
@@ -7708,7 +9958,7 @@ function surfacesFromTailscaleStatus(stdout) {
   } catch {
     return null;
   }
-  if (!isRecord16(value) || !isRecord16(value.Self) || typeof value.Self.DNSName !== "string") return null;
+  if (!isRecord23(value) || !isRecord23(value.Self) || typeof value.Self.DNSName !== "string") return null;
   const host = value.Self.DNSName.trim().replace(/\.$/u, "").toLowerCase();
   if (!host) return null;
   return {
@@ -7719,12 +9969,13 @@ function surfacesFromTailscaleStatus(stdout) {
       internalPort: 3e3,
       workspaces: {
         library: { path: "Library", access: "read-only" },
+        dashboards: { path: "Bases", access: "writable-ui-state" },
         authoring: { path: "Authoring", access: "writable-staging" }
       }
     }
   };
 }
-function isRecord16(value) {
+function isRecord23(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -7774,8 +10025,8 @@ ${result.stderr}`.match(/https:\/\/login\.tailscale\.com\/f\/serve\?[^\s]+/u)?.[
 }
 async function openApprovalPage(processes, url, environment, platform) {
   if (platform !== "darwin") return;
-  const open4 = await processes.findExecutable("open");
-  if (open4) await processes.run(open4, [url], environment, 1e4);
+  const open5 = await processes.findExecutable("open");
+  if (open5) await processes.run(open5, [url], environment, 1e4);
 }
 
 // src/host/service.ts
@@ -7793,9 +10044,17 @@ var HostService = class {
     if (!loginName) {
       throw new UsageError("Main Hub setup needs an authenticated Tailscale user identity; tagged or headless hosts require an explicit advanced tailnet policy");
     }
+    const existingState = await hostStateExists(this.options.hostRoot);
     const paths = await prepareHostState(this.options.hostRoot, personalPolicyFragment(loginName));
     const docker = await this.requireDocker();
     const compose = ["compose", "--env-file", paths.envFile, "-f", this.composeFile()];
+    if (existingState) {
+      const stopped = await this.dependencies.processes.run(docker, [...compose, "stop", "obsidian"], this.options.env);
+      if (stopped.exitCode !== 0) {
+        throw new Error("Docker Compose could not pause Obsidian for a safe workspace migration");
+      }
+      await prepareObsidianWorkspace(paths.obsidianVaultConfig);
+    }
     const start = [...compose, "up", "-d", "--build", "--wait", "--wait-timeout", "180"];
     const result = await this.dependencies.processes.run(docker, start, this.options.env);
     if (result.exitCode !== 0) {
@@ -7891,7 +10150,7 @@ function parseRegistryMcpRead(value) {
   return { releaseId: input.releaseId };
 }
 function strictObject3(value, allowedKeys) {
-  if (!isRecord5(value)) throw validationError2("Tool arguments must be an object");
+  if (!isRecord10(value)) throw validationError2("Tool arguments must be an object");
   const unknown = unknownKeys(value, allowedKeys);
   if (unknown.length > 0) throw validationError2(`Unknown tool arguments: ${unknown.sort().join(", ")}`);
   return value;
@@ -7962,7 +10221,7 @@ async function dispatchRegistry(api, call) {
 function toolResult(value) {
   return {
     content: [{ type: "text", text: JSON.stringify(value) }],
-    structuredContent: value
+    structuredContent: Array.isArray(value) ? { results: value } : value
   };
 }
 function isBrainCall(call) {
@@ -8017,7 +10276,7 @@ var SetupEnvironmentDetector = class {
 };
 
 // src/setup/guidance-sources.ts
-import { createHash as createHash11 } from "node:crypto";
+import { createHash as createHash13 } from "node:crypto";
 var OFFICIAL_DOCS = [
   { title: "Tailscale Serve", url: "https://tailscale.com/docs/features/tailscale-serve" },
   { title: "Tailscale serve command", url: "https://tailscale.com/docs/reference/tailscale-cli/serve" },
@@ -8104,7 +10363,7 @@ function pageDate(body) {
   return match?.[1] ? { pageDate: match[1].trim() } : {};
 }
 function hash(value) {
-  return `sha256:${createHash11("sha256").update(value).digest("base64url")}`;
+  return `sha256:${createHash13("sha256").update(value).digest("base64url")}`;
 }
 function snippets(body) {
   const matches2 = body.split(/\r?\n/u).map((line) => sanitizeSnippet(line)).filter((line) => !/\bfunnel\b/iu.test(line)).filter((line) => /(serve|service|compose|docker|login|auth|tailscale|grant|capabilit|policy|access control)/iu.test(line)).filter(Boolean).slice(0, 3).map((line) => line.slice(0, 180));
@@ -8237,8 +10496,8 @@ var HarnessInstaller = class {
 function claudePluginState(output, scope) {
   const value = JSON.parse(output);
   if (!Array.isArray(value)) throw new Error("Claude plugin inventory returned an invalid response");
-  const plugin = value.find((item) => isRecord17(item) && item.id === PLUGIN && item.scope === scope);
-  if (!isRecord17(plugin)) return { status: "missing" };
+  const plugin = value.find((item) => isRecord24(item) && item.id === PLUGIN && item.scope === scope);
+  if (!isRecord24(plugin)) return { status: "missing" };
   return {
     status: plugin.enabled === false ? "disabled" : "enabled",
     version: typeof plugin.version === "string" ? plugin.version : void 0
@@ -8246,12 +10505,12 @@ function claudePluginState(output, scope) {
 }
 function codexPluginInstalled(output) {
   const value = JSON.parse(output);
-  if (!isRecord17(value) || !Array.isArray(value.installed)) {
+  if (!isRecord24(value) || !Array.isArray(value.installed)) {
     throw new Error("Codex plugin inventory returned an invalid response");
   }
-  return value.installed.some((item) => isRecord17(item) && item.pluginId === PLUGIN && item.installed === true);
+  return value.installed.some((item) => isRecord24(item) && item.pluginId === PLUGIN && item.installed === true);
 }
-function isRecord17(value) {
+function isRecord24(value) {
   return typeof value === "object" && value !== null;
 }
 function failure(target, step, result) {
@@ -8364,30 +10623,30 @@ async function openSession(root4, clientVersion, tailscale) {
 
 // src/setup/package-root.ts
 import { existsSync } from "node:fs";
-import { dirname as dirname14, resolve as resolve8 } from "node:path";
+import { dirname as dirname17, resolve as resolve9 } from "node:path";
 import { fileURLToPath } from "node:url";
 function resolvePackageRoot(moduleUrl = import.meta.url) {
-  const moduleDirectory = dirname14(fileURLToPath(moduleUrl));
-  const candidates = [resolve8(moduleDirectory, ".."), resolve8(moduleDirectory, "../..")];
-  const packageRoot = candidates.find((candidate2) => existsSync(resolve8(candidate2, "package.json")));
+  const moduleDirectory = dirname17(fileURLToPath(moduleUrl));
+  const candidates = [resolve9(moduleDirectory, ".."), resolve9(moduleDirectory, "../..")];
+  const packageRoot = candidates.find((candidate2) => existsSync(resolve9(candidate2, "package.json")));
   if (!packageRoot) throw new Error("Skillloom package root is missing");
   return packageRoot;
 }
 
 // src/setup/portable-skills.ts
-import { cp, mkdir as mkdir16, readdir as readdir8, readFile as readFile13, rename as rename6, rm as rm12, stat as stat4 } from "node:fs/promises";
-import { createHash as createHash12, randomUUID as randomUUID9 } from "node:crypto";
-import { dirname as dirname15, join as join29 } from "node:path";
+import { cp, mkdir as mkdir21, readdir as readdir10, readFile as readFile18, rename as rename7, rm as rm14, stat as stat4 } from "node:fs/promises";
+import { createHash as createHash14, randomUUID as randomUUID9 } from "node:crypto";
+import { dirname as dirname18, join as join34 } from "node:path";
 var PortableSkillInstaller = class {
   async install(packageRoot, destinationRoot) {
-    const source = join29(packageRoot, "skills");
-    const destinationRootPath = join29(destinationRoot, ".agents", "skills");
-    await mkdir16(destinationRootPath, { recursive: true });
+    const source = join34(packageRoot, "skills");
+    const destinationRootPath = join34(destinationRoot, ".agents", "skills");
+    await mkdir21(destinationRootPath, { recursive: true });
     let changed = false;
-    for (const entry of await readdir8(source, { withFileTypes: true })) {
+    for (const entry of await readdir10(source, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      const sourceSkill = join29(source, entry.name);
-      const destinationSkill = join29(destinationRootPath, entry.name);
+      const sourceSkill = join34(source, entry.name);
+      const destinationSkill = join34(destinationRootPath, entry.name);
       if (await treeHash(sourceSkill) === await optionalTreeHash(destinationSkill)) continue;
       await replaceTree(sourceSkill, destinationSkill);
       changed = true;
@@ -8396,21 +10655,21 @@ var PortableSkillInstaller = class {
   }
 };
 async function replaceTree(source, destination) {
-  const staging = join29(dirname15(destination), `.${randomUUID9()}.staging`);
-  const backup = join29(dirname15(destination), `.${randomUUID9()}.backup`);
+  const staging = join34(dirname18(destination), `.${randomUUID9()}.staging`);
+  const backup = join34(dirname18(destination), `.${randomUUID9()}.backup`);
   try {
     await cp(source, staging, { recursive: true, force: false });
     const hadDestination = await exists(destination);
-    if (hadDestination) await rename6(destination, backup);
+    if (hadDestination) await rename7(destination, backup);
     try {
-      await rename6(staging, destination);
+      await rename7(staging, destination);
     } catch (error) {
-      if (hadDestination) await rename6(backup, destination);
+      if (hadDestination) await rename7(backup, destination);
       throw error;
     }
-    await rm12(backup, { recursive: true, force: true });
+    await rm14(backup, { recursive: true, force: true });
   } finally {
-    await rm12(staging, { recursive: true, force: true });
+    await rm14(staging, { recursive: true, force: true });
   }
 }
 async function exists(path) {
@@ -8431,17 +10690,17 @@ async function optionalTreeHash(root4) {
   }
 }
 async function treeHash(root4) {
-  const hash2 = createHash12("sha256");
+  const hash2 = createHash14("sha256");
   for (const relativePath of await listFiles(root4)) {
     hash2.update(relativePath);
-    hash2.update(await readFile13(join29(root4, relativePath)));
+    hash2.update(await readFile18(join34(root4, relativePath)));
   }
   return hash2.digest("hex");
 }
 async function listFiles(root4, prefix = "") {
   const paths = [];
-  for (const entry of await readdir8(join29(root4, prefix), { withFileTypes: true })) {
-    const relativePath = join29(prefix, entry.name);
+  for (const entry of await readdir10(join34(root4, prefix), { withFileTypes: true })) {
+    const relativePath = join34(prefix, entry.name);
     if (entry.isDirectory()) paths.push(...await listFiles(root4, relativePath));
     else if (entry.isFile()) paths.push(relativePath);
   }
@@ -8451,8 +10710,8 @@ async function listFiles(root4, prefix = "") {
 // src/setup/process.ts
 import { execFile } from "node:child_process";
 import { constants as constants3 } from "node:fs";
-import { access as access4 } from "node:fs/promises";
-import { delimiter as delimiter2, join as join30 } from "node:path";
+import { access as access5 } from "node:fs/promises";
+import { delimiter as delimiter3, join as join35 } from "node:path";
 import { promisify } from "node:util";
 var execute = promisify(execFile);
 var platformFallbacks = process.platform === "darwin" ? { tailscale: ["/Applications/Tailscale.app/Contents/MacOS/Tailscale"] } : {};
@@ -8465,12 +10724,12 @@ var SystemProcessPort = class {
   fallbacks;
   async findExecutable(name) {
     const candidates = [
-      ...this.searchPath.split(delimiter2).filter(Boolean).map((directory) => join30(directory, name)),
+      ...this.searchPath.split(delimiter3).filter(Boolean).map((directory) => join35(directory, name)),
       ...this.fallbacks[name] ?? []
     ];
     for (const path of candidates) {
       try {
-        await access4(path, constants3.X_OK);
+        await access5(path, constants3.X_OK);
         return path;
       } catch {
       }
@@ -8498,26 +10757,26 @@ var SystemProcessPort = class {
 };
 
 // src/setup/state.ts
-import { mkdir as mkdir17, readFile as readFile14 } from "node:fs/promises";
-import { join as join31 } from "node:path";
+import { mkdir as mkdir22, readFile as readFile19 } from "node:fs/promises";
+import { join as join36 } from "node:path";
 async function readSetupState(root4) {
   try {
-    return parseState(JSON.parse(await readFile14(statePath(root4), "utf8")));
+    return parseState(JSON.parse(await readFile19(statePath(root4), "utf8")));
   } catch (error) {
-    if (isMissing4(error)) return { version: 1, completed: {} };
+    if (isMissing6(error)) return { version: 1, completed: {} };
     throw error;
   }
 }
 async function checkpointSetupTarget(root4, state, target, scope, packageVersion) {
   state.completed[completionKey(target, scope)] = { packageVersion, completedAt: (/* @__PURE__ */ new Date()).toISOString() };
-  await mkdir17(root4, { recursive: true });
+  await mkdir22(root4, { recursive: true });
   await atomicWriteJson(statePath(root4), state, { mode: 384 });
 }
 function isSetupTargetCurrent(state, target, scope, packageVersion) {
   return state.completed[completionKey(target, scope)]?.packageVersion === packageVersion;
 }
 function statePath(root4) {
-  return join31(root4, "setup.json");
+  return join36(root4, "setup.json");
 }
 function completionKey(target, scope) {
   return `${target}:${scope}`;
@@ -8535,7 +10794,7 @@ function parseState(value) {
   }
   return { version: 1, completed };
 }
-function isMissing4(error) {
+function isMissing6(error) {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
@@ -8553,6 +10812,7 @@ function resolveSetupSurfaces(discovery) {
       internalPort: 3e3,
       workspaces: {
         library: { path: "Library", access: "read-only" },
+        dashboards: { path: "Bases", access: "writable-ui-state" },
         authoring: { path: "Authoring", access: "writable-staging" }
       }
     }
@@ -8799,7 +11059,7 @@ function mainHubSteps(environment, sources) {
       title: "Start the private Hub and Obsidian Web UI with a read-only Library and writable Authoring workspace",
       action: "automatic",
       command: "skillloom host install --yes",
-      verification: "Docker reports skillloom-hub and obsidian running with Library read-only and Authoring writable-staging, then Tailscale Serve publishes only tailnet HTTPS surfaces."
+      verification: "Docker reports skillloom-hub and obsidian running with Library read-only, Bases writable-ui-state, and Authoring writable-staging, then Tailscale Serve publishes only tailnet HTTPS surfaces."
     },
     {
       id: "verify-tailnet-access",
@@ -8895,12 +11155,12 @@ async function createSetupService(root4, scope) {
     ),
     new HarnessInstaller(processes, new PortableSkillInstaller()),
     new TerminalConsentPort(),
-    { root: root4, stateRoot: join32(root4, ".skillloom", "hub"), packageRoot, packageVersion },
+    { root: root4, stateRoot: join37(root4, ".skillloom", "hub"), packageRoot, packageVersion },
     new SetupEnvironmentDetector(processes),
     new SetupRolePlanner(guidanceSources),
     new HostService(
       { processes, consent: new TerminalConsentPort() },
-      { packageRoot, hostRoot: join32(root4, ".skillloom", "host"), env: process.env }
+      { packageRoot, hostRoot: join37(root4, ".skillloom", "host"), env: process.env }
     )
   );
 }
@@ -8944,7 +11204,7 @@ async function resolveTrustedRoot() {
   return userRoot;
 }
 async function readPackageVersion(packageRoot) {
-  const value = JSON.parse(await readFile15(join32(packageRoot, "package.json"), "utf8"));
+  const value = JSON.parse(await readFile20(join37(packageRoot, "package.json"), "utf8"));
   if (typeof value !== "object" || value === null || !("version" in value) || typeof value.version !== "string") {
     throw new Error("Skillloom package version is missing");
   }
@@ -8976,11 +11236,11 @@ async function syncCommand(command, service) {
 
 // src/host/defaults.ts
 import { homedir as homedir5 } from "node:os";
-import { join as join33 } from "node:path";
+import { join as join38 } from "node:path";
 function createDefaultHostService() {
   return new HostService(
     { processes: new SystemProcessPort(), consent: new TerminalConsentPort() },
-    { packageRoot: resolvePackageRoot(), hostRoot: join33(homedir5(), ".skillloom", "host"), env: process.env }
+    { packageRoot: resolvePackageRoot(), hostRoot: join38(homedir5(), ".skillloom", "host"), env: process.env }
   );
 }
 
@@ -8988,6 +11248,753 @@ function createDefaultHostService() {
 async function hostCommand(command, service) {
   const host = service ?? createDefaultHostService();
   return command.action === "install" ? await host.install(command.yes) : await host.status();
+}
+
+// src/demo/service.ts
+import { mkdir as mkdir24, mkdtemp as mkdtemp3, rm as rm16 } from "node:fs/promises";
+import { tmpdir as tmpdir2 } from "node:os";
+import { join as join42 } from "node:path";
+import { performance } from "node:perf_hooks";
+
+// src/hub/runtime/auth-context.ts
+import { AsyncLocalStorage } from "node:async_hooks";
+var storage = new AsyncLocalStorage();
+async function runWithHubAuthorizationContext(authorization, fn) {
+  return await storage.run(authorization, fn);
+}
+function currentHubAuthorizationContext() {
+  return storage.getStore();
+}
+
+// src/hub/runtime/permissions.ts
+var OBSIDIAN_AUTHORING_ACTOR_ID = "local:obsidian-authoring";
+function createRuntimeBrainPermissions() {
+  return {
+    async requireRead(actor) {
+      if (isInProcessAuthoringActor(actor.actorId)) return;
+      requireActorPermission(actor.actorId, "brain:read");
+    },
+    async requireWrite(actor, action) {
+      if (isInProcessAuthoringActor(actor.actorId) && (action === "capture" || action === "update")) return;
+      requireActorPermission(actor.actorId, `brain:${action}`);
+    }
+  };
+}
+function isInProcessAuthoringActor(actorId) {
+  return actorId === OBSIDIAN_AUTHORING_ACTOR_ID && currentHubAuthorizationContext() === void 0;
+}
+function requireActorPermission(actorId, permission) {
+  const authorization = currentHubAuthorizationContext();
+  if (authorization === void 0) throw new HubAuthorizationError(`Actor ${actorId} is not authorized`);
+  if (authorization.principal.actorId !== actorId) throw new HubAuthorizationError(`Actor ${actorId} is not authorized for this request`);
+  authorization.require(permission);
+}
+
+// src/evaluation/brain-runtime.ts
+async function createEvaluationBrainRuntime(root4, actorIds) {
+  const authorization = createHubAuthorizationService({
+    actorRoles: Object.fromEntries(actorIds.map((actorId) => [actorId, ["contributor"]])),
+    capabilityNamespaces: ["skillloom.local/cap/evaluation"]
+  });
+  const contexts = new Map(actorIds.map((actorId) => [
+    actorId,
+    authorization.authorize({ actorId, kind: "user", appCapabilities: [] })
+  ]));
+  const brain = await createBrainService({ root: root4, permissions: createRuntimeBrainPermissions() });
+  return {
+    brain,
+    actor(actorId) {
+      requireContext(contexts, actorId);
+      return { actorId };
+    },
+    async runAs(actorId, fn) {
+      return await runWithHubAuthorizationContext(requireContext(contexts, actorId), fn);
+    },
+    async close() {
+      await brain.close();
+    }
+  };
+}
+function requireContext(contexts, actorId) {
+  const context = contexts.get(actorId);
+  if (context === void 0) throw new Error(`Evaluation actor is not configured: ${actorId}`);
+  return context;
+}
+
+// src/demo/checks.ts
+import { access as access6 } from "node:fs/promises";
+import { join as join41 } from "node:path";
+
+// src/learning/workflow-governance.ts
+import { createHash as createHash15 } from "node:crypto";
+import { rm as rm15 } from "node:fs/promises";
+import { dirname as dirname19, join as join40 } from "node:path";
+
+// src/learning/workflow-governance-package.ts
+import { cp as cp2, mkdir as mkdir23, readFile as readFile21, writeFile as writeFile4 } from "node:fs/promises";
+import { basename as basename10, join as join39 } from "node:path";
+var maxSteps = 8;
+var maxStepLength = 240;
+async function writeWorkflowSkillPackage(root4, operationId, workflow, action, baseSkillPath) {
+  const name = action === "patch" && baseSkillPath !== void 0 ? basename10(baseSkillPath) : skillName(workflow.title);
+  const packageRoot = join39(root4, ".skillloom", "staging", `workflow-${safeFragment(operationId)}`, name);
+  await mkdir23(packageRoot, { recursive: true });
+  if (action === "patch" && baseSkillPath !== void 0) {
+    await cp2(baseSkillPath, packageRoot, { recursive: true });
+  }
+  const content = action === "patch" && baseSkillPath !== void 0 ? await patchedSkillText(baseSkillPath, workflow) : createdSkillText(name, workflow);
+  await writeFile4(join39(packageRoot, "SKILL.md"), content);
+  return packageRoot;
+}
+function boundedWorkflowSteps(workflow) {
+  if (workflow.details.kind !== "workflow") return [];
+  return workflow.details.steps.slice(0, maxSteps).map((step) => step.trim().replace(/\s+/gu, " ").slice(0, maxStepLength)).filter((step) => step.length > 0);
+}
+function createdSkillText(name, workflow) {
+  return [
+    "---",
+    `name: ${name}`,
+    `description: ${cleanDescription(workflow.title)}`,
+    "---",
+    "",
+    `Use when ${cleanSentence(workflow.details.kind === "workflow" ? workflow.details.trigger : workflow.title)}.`,
+    "",
+    ...boundedWorkflowSteps(workflow).map((step, index) => `${index + 1}. ${step}`),
+    ""
+  ].join("\n");
+}
+async function patchedSkillText(baseSkillPath, workflow) {
+  const base = await readFile21(join39(baseSkillPath, "SKILL.md"), "utf8");
+  return [
+    base.trimEnd(),
+    "",
+    "## Proven Workflow Update",
+    "",
+    `Use when ${cleanSentence(workflow.details.kind === "workflow" ? workflow.details.trigger : workflow.title)}.`,
+    "",
+    ...boundedWorkflowSteps(workflow).map((step, index) => `${index + 1}. ${step}`),
+    ""
+  ].join("\n");
+}
+function skillName(value) {
+  return safeFragment(value).slice(0, 48) || "workflow-skill";
+}
+function safeFragment(value) {
+  return value.toLowerCase().replace(/[^a-z0-9-]+/gu, "-").replace(/^-+|-+$/gu, "");
+}
+function cleanDescription(value) {
+  const cleaned = value.trim().replace(/\s+/gu, " ").slice(0, 120);
+  return cleaned.endsWith(".") ? cleaned : `${cleaned}.`;
+}
+function cleanSentence(value) {
+  return value.trim().replace(/\s+/gu, " ").slice(0, 180).replace(/[.]+$/u, "");
+}
+
+// src/learning/workflow-governance.ts
+async function governWorkflowUpdate(input) {
+  await ensureConfig(input.projectRoot);
+  const actor = { actorId: input.actorId };
+  const workflow = await input.brain.read({ actor, artifactId: input.workflowArtifactId });
+  if (workflow.type !== "workflow" || workflow.details.kind !== "workflow") {
+    throw new ValidationError("Governed workflow update requires a Brain workflow artifact");
+  }
+  if (input.action === "patch" && input.baseSkillPath === void 0) {
+    return await reject(input, workflow, "patch workflow update requires a base skill path", false);
+  }
+  if (input.action === "create" && input.baseSkillPath !== void 0) {
+    return await reject(input, workflow, "create workflow update cannot include a base skill path", false);
+  }
+  if (boundedWorkflowSteps(workflow).length === 0) {
+    return await reject(input, workflow, "workflow has no bounded executable steps", false);
+  }
+  if (input.proof === void 0) {
+    return { status: "draft", reason: "reliable verifier proof is missing", workflow };
+  }
+  const proofError = verifierError(input.proof, workflow);
+  if (proofError !== null) {
+    return await reject(input, workflow, proofError, input.proof.status !== "passed");
+  }
+  const candidate2 = await captureImmutableCandidate(input, workflow);
+  if (input.promote === void 0) {
+    return { status: "candidate", workflow, candidate: candidate2 };
+  }
+  const validation = await validateSkillPackage(join40(input.projectRoot, ".skillloom", "candidates", candidate2.candidateId, "skill"), {
+    expectedName: candidate2.metadata.name,
+    expectedHash: candidate2.packageHash
+  });
+  const config = await ensureConfig(input.projectRoot);
+  const policy = evaluateAutoPromotion(config, {
+    candidateId: candidate2.candidateId,
+    packageHash: validation.packageHash,
+    targets: [...input.promote.targets],
+    scopes: input.promote.targets.map(() => input.promote?.scope ?? "project"),
+    files: validation.files,
+    warnings: validation.findings.filter((finding2) => finding2.severity === "warning").length,
+    dangers: validation.findings.filter((finding2) => finding2.severity === "danger").length,
+    capabilities: validation.metadata.capabilities ?? []
+  });
+  if (!policy.approved) {
+    return await reject(input, workflow, `policy rejected workflow promotion: ${policy.reasons.join("; ")}`, true);
+  }
+  const promotion = await promoteCandidate(
+    { projectRoot: input.projectRoot, homeDir: input.homeDir },
+    candidate2.candidateId,
+    input.promote.targets.map((target) => ({ adapter: getScopedAdapter(target), scope: input.promote?.scope ?? "project" })),
+    { kind: "policy", workflowProof: candidate2.governedWorkflowProof }
+  );
+  return { status: "promoted", workflow, candidate: candidate2, promotion };
+}
+async function captureImmutableCandidate(input, workflow) {
+  const operationId = `op-workflow-${stableUuid2(input.operationId)}`;
+  return await withStoreLock(input.projectRoot, async () => {
+    const packageRoot = await writeWorkflowSkillPackage(input.projectRoot, input.operationId, workflow, input.action, input.baseSkillPath);
+    let snapshot;
+    try {
+      snapshot = await stageCandidateSnapshot(input.projectRoot, operationId, packageRoot);
+      const validation = await validateSkillPackage(snapshot.skillRoot, { folderNamePolicy: "match-metadata" });
+      const createdAt = stableTimestamp(workflow.updatedAt, input.operationId);
+      const candidateId = createCandidateId(createdAt, validation.packageHash);
+      const existing = await readCandidate(input.projectRoot, candidateId).catch(() => null);
+      if (existing !== null) {
+        await discardCandidateSnapshot(snapshot);
+        return existing;
+      }
+      const record = {
+        candidateId,
+        operationId,
+        state: stateForFindings(validation.findings),
+        metadata: validation.metadata,
+        packageHash: validation.packageHash,
+        createdAt,
+        createdBy: "agent",
+        evidence: [`workflow:${workflow.id}@${workflow.revision}`, `proof:${input.proof?.kind ?? "missing"}`],
+        findings: validation.findings,
+        base: await baseFor(input),
+        governedWorkflowProof: proofDecision(input, workflow, candidateId, validation.packageHash)
+      };
+      await commitCandidateSnapshot(input.projectRoot, record, snapshot);
+      snapshot = void 0;
+      await appendEvent(input.projectRoot, { operationId, kind: "capture", phase: "snapshotted", evidence: { candidateId, workflowArtifactId: workflow.id } });
+      return record;
+    } finally {
+      if (snapshot !== void 0) await discardCandidateSnapshot(snapshot).catch(() => void 0);
+      await rm15(packageRoot, { recursive: true, force: true });
+      await rm15(dirname19(packageRoot), { recursive: true, force: true });
+    }
+  }, { operationId, context: "workflow-governance" });
+}
+async function reject(input, workflow, reason, retryable) {
+  const actor = { actorId: input.actorId };
+  const rejected = await input.brain.capture({
+    actor,
+    requestId: `workflow-governance:rejected:${stableUuid2(`${input.operationId}:${workflow.id}:${workflow.revision}:${reason}`)}`,
+    type: "rejected-update",
+    title: `Rejected workflow update: ${workflow.title}`,
+    content: workflow.content,
+    provenance: {
+      source: "skillloom-workflow-governance",
+      workflowArtifactId: workflow.id,
+      workflowRevision: workflow.revision,
+      workflowContentHash: workflow.contentHash,
+      operationId: input.operationId,
+      reason
+    },
+    details: { kind: "rejected-update", targetArtifactId: workflow.id, rejectedAt: stableTimestamp(workflow.updatedAt, input.operationId), reason, retryable },
+    sensitivity: workflow.sensitivity
+  });
+  await input.brain.capture({
+    actor,
+    requestId: `workflow-governance:feedback:${stableUuid2(`${input.operationId}:${workflow.id}:${reason}`)}`,
+    type: "feedback",
+    title: `Workflow governance feedback: ${workflow.title}`,
+    content: reason,
+    provenance: {
+      source: "skillloom-workflow-governance",
+      workflowArtifactId: workflow.id,
+      rejectedUpdateId: rejected.artifact.id
+    },
+    details: { kind: "feedback", targetArtifactId: workflow.id, signal: "negative", reason },
+    sensitivity: workflow.sensitivity
+  });
+  await writeLearningEvent(input.projectRoot, {
+    source: "codex",
+    outcome: "memory",
+    summary: `Rejected workflow update: ${reason}`,
+    episode: {
+      taskId: input.operationId,
+      host: "codex",
+      outcome: "failure",
+      evidence: [{ category: "mcp", summary: `workflow:${workflow.id}` }],
+      verifierSignals: [{ kind: "review", status: "failed", summary: reason }]
+    }
+  });
+  return { status: "rejected", reason, workflow, rejectedUpdateId: rejected.artifact.id };
+}
+function verifierError(proof, workflow) {
+  if (proof.status !== "passed") return `verifier ${proof.kind} failed: ${proof.summary}`;
+  if (proof.workflow.artifactId !== workflow.id || proof.workflow.revision !== workflow.revision || proof.workflow.contentHash !== workflow.contentHash) {
+    return "verifier proof is not bound to the workflow artifact";
+  }
+  const hashes = provenanceHashes(workflow);
+  if (hashes.length > 0 && !hashes.every((hash2) => proof.provenanceHashes.includes(hash2))) {
+    return "verifier proof is not bound to workflow episode provenance";
+  }
+  if (proof.kind === "held-out-evaluation" && proof.score < proof.threshold) {
+    return `held-out evaluation score ${proof.score} is below ${proof.threshold}`;
+  }
+  return null;
+}
+function provenanceHashes(workflow) {
+  const hashes = workflow.provenance.provenanceHashes;
+  if (!Array.isArray(hashes)) return [];
+  const values = [];
+  for (const hash2 of hashes) {
+    if (typeof hash2 === "string" && /^sha256:[0-9a-f]{64}$/u.test(hash2)) values.push(hash2);
+  }
+  return values;
+}
+async function baseFor(input) {
+  if (input.action !== "patch" || input.baseSkillPath === void 0) return { kind: "none" };
+  const validation = await validateSkillPackage(input.baseSkillPath);
+  return { kind: "installed", path: input.baseSkillPath, hash: validation.packageHash };
+}
+function proofDecision(input, workflow, candidateId, packageHash5) {
+  if (input.proof === void 0) return void 0;
+  return {
+    schemaVersion: "skillloom-workflow-proof-v1",
+    decisionId: `proof-${stableUuid2(`${input.operationId}:${workflow.id}:${candidateId}`)}`,
+    idempotencyKey: input.operationId,
+    verdict: input.proof.status,
+    workflow: {
+      artifactId: workflow.id,
+      revision: workflow.revision,
+      contentHash: workflow.contentHash
+    },
+    candidate: { candidateId, packageHash: packageHash5 },
+    verifier: {
+      kind: input.proof.kind,
+      summary: input.proof.summary,
+      evidence: input.proof.kind === "replay" ? input.proof.command : `${input.proof.score}/${input.proof.threshold}`
+    },
+    provenanceHashes: [...input.proof.provenanceHashes],
+    decidedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function stableTimestamp(updatedAt, operationId) {
+  const base = Number.isNaN(Date.parse(updatedAt)) ? /* @__PURE__ */ new Date("2026-01-01T00:00:00.000Z") : new Date(updatedAt);
+  const offset = Number.parseInt(createHash15("sha256").update(operationId).digest("hex").slice(0, 8), 16) % 1e3;
+  return new Date(base.getTime() + offset).toISOString();
+}
+function stableUuid2(value) {
+  const hash2 = createHash15("sha256").update(value).digest("hex");
+  return `${hash2.slice(0, 8)}-${hash2.slice(8, 12)}-4${hash2.slice(13, 16)}-a${hash2.slice(17, 20)}-${hash2.slice(20, 32)}`;
+}
+
+// src/demo/scenario.ts
+var demoAgentA = "user:agent-a@demo.skillloom";
+var demoAgentB = "user:agent-b@demo.skillloom";
+var provenanceHash2 = `sha256:${"a".repeat(64)}`;
+function demoWorkflowCapture(actor) {
+  return {
+    actor,
+    requestId: "demo-workflow",
+    type: "workflow",
+    title: "Recover a stale Docker build",
+    content: "Reuse the verified recovery steps instead of rediscovering them.",
+    provenance: { provenanceHashes: [provenanceHash2], source: "agent-a" },
+    details: {
+      kind: "workflow",
+      trigger: "a Docker rebuild keeps serving stale output",
+      steps: [
+        "Confirm the stale behavior with the focused health check.",
+        "Inspect the build inputs and cache boundary.",
+        "Rebuild the affected image without reusing the stale layer.",
+        "Run the focused health check again.",
+        "Record the verified outcome and source."
+      ],
+      verifier: "focused replay",
+      promotable: true
+    },
+    sensitivity: "tailnet"
+  };
+}
+function demoReplayProof(workflow, status) {
+  return {
+    kind: "replay",
+    status,
+    workflow: {
+      artifactId: workflow.id,
+      revision: workflow.revision,
+      contentHash: workflow.contentHash
+    },
+    summary: status === "passed" ? "focused replay passed" : "focused replay failed",
+    command: "node --test focused-replay.test.ts",
+    provenanceHashes: [provenanceHash2]
+  };
+}
+
+// src/demo/checks.ts
+async function runDemoChecks(runtime, projectRoot, homeDir) {
+  const workflow = await runtime.runAs(demoAgentA, async () => {
+    const actor = runtime.actor(demoAgentA);
+    const captured = await runtime.brain.capture(demoWorkflowCapture(actor));
+    return await runtime.brain.read({ actor, artifactId: captured.artifact.id });
+  });
+  const retrieved = await runtime.runAs(demoAgentB, async () => await runtime.brain.retrieve({
+    actor: runtime.actor(demoAgentB),
+    query: "stale Docker build",
+    tier: "quick",
+    limit: 5
+  }));
+  assertDemo(retrieved.results[0]?.id === workflow.id, "Agent B did not retrieve Agent A's workflow");
+  const checks = [{
+    name: "cross-agent-retrieval",
+    status: "passed",
+    evidence: `${workflow.id} ranked first for agent B`
+  }];
+  const input = {
+    projectRoot,
+    homeDir,
+    brain: runtime.brain,
+    actorId: demoAgentB,
+    workflowArtifactId: workflow.id,
+    action: "create"
+  };
+  const draft = await runtime.runAs(demoAgentB, async () => await governWorkflowUpdate({
+    ...input,
+    operationId: "demo-missing-proof"
+  }));
+  assertDemo(draft.status === "draft", "Workflow without proof did not stay a draft");
+  checks.push({
+    name: "missing-proof-stays-draft",
+    status: "passed",
+    evidence: draft.reason
+  });
+  const failed = await runtime.runAs(demoAgentB, async () => await governWorkflowUpdate({
+    ...input,
+    operationId: "demo-failed-proof",
+    proof: demoReplayProof(workflow, "failed")
+  }));
+  assertDemo(failed.status === "rejected", "Failed verifier proof was not rejected");
+  checks.push({
+    name: "failed-proof-is-rejected",
+    status: "passed",
+    evidence: failed.reason
+  });
+  await setMode(projectRoot, "manual");
+  const blocked = await runtime.runAs(demoAgentB, async () => await governWorkflowUpdate({
+    ...input,
+    operationId: "demo-manual-promotion",
+    proof: demoReplayProof(workflow, "passed"),
+    promote: { targets: ["codex"], scope: "project" }
+  }));
+  assertDemo(blocked.status === "rejected", "Manual mode did not block policy promotion");
+  checks.push({
+    name: "manual-mode-blocks-promotion",
+    status: "passed",
+    evidence: blocked.reason
+  });
+  await setMode(projectRoot, "policy");
+  const promoted = await runtime.runAs(demoAgentB, async () => await governWorkflowUpdate({
+    ...input,
+    operationId: "demo-policy-promotion",
+    proof: demoReplayProof(workflow, "passed"),
+    promote: { targets: ["codex"], scope: "project" }
+  }));
+  assertDemo(promoted.status === "promoted", "Policy mode did not promote the proved workflow");
+  const destination = join41(projectRoot, ".agents", "skills", promoted.candidate.metadata.name, "SKILL.md");
+  await access6(destination);
+  checks.push({
+    name: "policy-mode-promotes",
+    status: "passed",
+    evidence: `${promoted.candidate.candidateId} installed after proof and policy approval`
+  });
+  const rolledBack = await rollbackCommand({
+    command: "rollback",
+    promotionId: promoted.promotion.promotionId,
+    yes: true,
+    force: false,
+    json: true
+  }, projectRoot);
+  assertDemo(rolledBack.result === "rolled-back", "Promotion rollback did not complete");
+  assertDemo(!await exists2(destination), "Rolled-back skill is still installed");
+  checks.push({
+    name: "rollback-removes-skill",
+    status: "passed",
+    evidence: `${promoted.promotion.promotionId} restored the pre-promotion state`
+  });
+  return checks;
+}
+function assertDemo(condition, message2) {
+  if (!condition) throw new Error(message2);
+}
+async function exists2(path) {
+  return await access6(path).then(() => true, () => false);
+}
+
+// src/demo/service.ts
+async function runDemo(keep) {
+  const started = performance.now();
+  const workspace = await mkdtemp3(join42(tmpdir2(), "skillloom-demo-"));
+  const projectRoot = join42(workspace, "project");
+  const homeDir = join42(workspace, "home");
+  const brainRoot = join42(workspace, "brain");
+  let runtime = null;
+  try {
+    await Promise.all([mkdir24(projectRoot), mkdir24(homeDir)]);
+    await initCommand({ command: "init", root: projectRoot, json: true });
+    runtime = await createEvaluationBrainRuntime(brainRoot, [demoAgentA, demoAgentB]);
+    const checks = await runDemoChecks(runtime, projectRoot, homeDir);
+    return {
+      command: "demo",
+      workspace,
+      workspaceRetained: keep,
+      durationMs: roundedDuration(started),
+      checks,
+      summary: { passed: checks.length, failed: 0 }
+    };
+  } finally {
+    try {
+      await runtime?.close();
+    } finally {
+      if (!keep) await rm16(workspace, { recursive: true, force: true });
+    }
+  }
+}
+function roundedDuration(started) {
+  return Number((performance.now() - started).toFixed(2));
+}
+
+// src/commands/demo.ts
+async function demoCommand(command) {
+  return await runDemo(command.keep);
+}
+
+// src/benchmarks/brain-retrieval.ts
+import { performance as performance2 } from "node:perf_hooks";
+
+// src/benchmarks/brain-corpus.ts
+var benchmarkActorId = "user:benchmark@skillloom.local";
+async function populateBrainBenchmarkCorpus(runtime, records) {
+  const actor = runtime.actor(benchmarkActorId);
+  const english = await runtime.brain.capture({
+    actor,
+    requestId: "benchmark-english-target",
+    type: "note",
+    title: "Stale Docker layer cache",
+    content: "A stale Docker layer cache blocks rebuild verification until the affected image is rebuilt.",
+    provenance: { source: "benchmark-corpus" },
+    sensitivity: "private"
+  });
+  const thai = await runtime.brain.capture({
+    actor,
+    requestId: "benchmark-thai-target",
+    type: "note",
+    title: "\u0E41\u0E04\u0E0A Docker \u0E04\u0E49\u0E32\u0E07",
+    content: "\u0E41\u0E04\u0E0A Docker \u0E04\u0E49\u0E32\u0E07 \u0E17\u0E33\u0E43\u0E2B\u0E49\u0E1C\u0E25 build \u0E40\u0E01\u0E48\u0E32\u0E22\u0E31\u0E07\u0E16\u0E39\u0E01\u0E43\u0E0A\u0E49\u0E07\u0E32\u0E19\u0E41\u0E25\u0E30\u0E15\u0E49\u0E2D\u0E07\u0E15\u0E23\u0E27\u0E08\u0E43\u0E2B\u0E21\u0E48\u0E2B\u0E25\u0E31\u0E07 rebuild",
+    provenance: { source: "benchmark-corpus" },
+    sensitivity: "private"
+  });
+  await runtime.brain.capture({
+    actor,
+    requestId: "benchmark-distractor",
+    type: "note",
+    title: "Container networking",
+    content: "Private container networking keeps application ports on loopback.",
+    provenance: { source: "benchmark-corpus" },
+    sensitivity: "private"
+  });
+  for (let index = 3; index < records; index += 1) {
+    await runtime.brain.capture({
+      actor,
+      requestId: `benchmark-filler-${index}`,
+      type: "note",
+      title: `Operational note ${index}`,
+      content: `Deterministic filler record ${index} covers unrelated operational topic group ${index % 17}.`,
+      provenance: { source: "benchmark-corpus", ordinal: index },
+      sensitivity: "private"
+    });
+  }
+  return { english: english.artifact, thai: thai.artifact };
+}
+function brainBenchmarkCases(targets) {
+  return [
+    {
+      name: "english-exact",
+      query: "stale Docker layer cache",
+      targetId: targets.english.id,
+      required: true
+    },
+    {
+      name: "thai-exact",
+      query: "\u0E41\u0E04\u0E0A Docker \u0E04\u0E49\u0E32\u0E07",
+      targetId: targets.thai.id,
+      required: true
+    },
+    {
+      name: "cross-language",
+      query: "stale Docker cache",
+      targetId: targets.thai.id,
+      required: false
+    }
+  ];
+}
+
+// src/benchmarks/workspace.ts
+import { mkdir as mkdir25, mkdtemp as mkdtemp4, readFile as readFile22, readdir as readdir11, rm as rm17, writeFile as writeFile5 } from "node:fs/promises";
+import { tmpdir as tmpdir3 } from "node:os";
+import { join as join43, resolve as resolve10 } from "node:path";
+var markerName = ".skillloom-retrieval-benchmark.json";
+var schemaVersion = 1;
+async function prepareRetrievalBenchmarkWorkspace(input) {
+  if (!input.workspace) {
+    const root5 = await mkdtemp4(join43(tmpdir3(), "skillloom-retrieval-benchmark-"));
+    try {
+      await initialize(root5, input.records);
+      return {
+        root: root5,
+        brainRoot: join43(root5, "brain"),
+        retained: input.keep,
+        resumed: false,
+        cleanup: input.keep ? async () => void 0 : async () => await rm17(root5, { recursive: true, force: true })
+      };
+    } catch (error) {
+      await rm17(root5, { recursive: true, force: true });
+      throw error;
+    }
+  }
+  const root4 = resolve10(input.workspace);
+  await mkdir25(root4, { recursive: true });
+  const entries = await readdir11(root4);
+  const resumed = entries.includes(markerName);
+  if (!resumed && entries.length > 0) {
+    throw new Error(`Benchmark workspace is not empty and has no ${markerName} marker`);
+  }
+  if (resumed) {
+    await validateMarker(root4, input.records);
+  } else {
+    await initialize(root4, input.records);
+  }
+  return {
+    root: root4,
+    brainRoot: join43(root4, "brain"),
+    retained: true,
+    resumed,
+    cleanup: async () => void 0
+  };
+}
+async function initialize(root4, records) {
+  await writeFile5(
+    join43(root4, markerName),
+    `${JSON.stringify({ schemaVersion, records }, null, 2)}
+`,
+    { flag: "wx", mode: 384 }
+  );
+  await mkdir25(join43(root4, "brain"));
+}
+async function validateMarker(root4, records) {
+  const value = JSON.parse(await readFile22(join43(root4, markerName), "utf8"));
+  if (typeof value !== "object" || value === null || !("schemaVersion" in value) || value.schemaVersion !== schemaVersion || !("records" in value) || value.records !== records) {
+    throw new Error("Benchmark workspace marker does not match this corpus size or schema");
+  }
+  await mkdir25(join43(root4, "brain"), { recursive: true });
+}
+
+// src/benchmarks/brain-retrieval.ts
+async function runBrainRetrievalBenchmark(input) {
+  if (!Number.isSafeInteger(input.records) || input.records < 3) {
+    throw new Error("Retrieval benchmark requires at least 3 records");
+  }
+  if (!Number.isSafeInteger(input.iterations) || input.iterations < 1) {
+    throw new Error("Retrieval benchmark requires at least 1 iteration");
+  }
+  const workspace = await prepareRetrievalBenchmarkWorkspace(input);
+  let runtime = null;
+  try {
+    const initialRuntime = await createEvaluationBrainRuntime(workspace.brainRoot, [benchmarkActorId]);
+    runtime = initialRuntime;
+    const ingestStarted = performance2.now();
+    const targets = await initialRuntime.runAs(
+      benchmarkActorId,
+      async () => await populateBrainBenchmarkCorpus(initialRuntime, input.records)
+    );
+    const ingestMs = elapsed(ingestStarted);
+    await initialRuntime.close();
+    runtime = null;
+    const startupStarted = performance2.now();
+    const reopenedRuntime = await createEvaluationBrainRuntime(workspace.brainRoot, [benchmarkActorId]);
+    runtime = reopenedRuntime;
+    const coldStartMs = elapsed(startupStarted);
+    const latencies = [];
+    const cases = await reopenedRuntime.runAs(
+      benchmarkActorId,
+      async () => await evaluate(reopenedRuntime, targets, input.iterations, latencies)
+    );
+    return {
+      command: "benchmark",
+      kind: "retrieval",
+      implementation: "fts5-bm25-graph",
+      records: input.records,
+      iterations: input.iterations,
+      workspace: workspace.root,
+      workspaceRetained: workspace.retained,
+      resumed: workspace.resumed,
+      cases,
+      metrics: {
+        ingestMs,
+        coldStartMs,
+        queryP50Ms: percentile(latencies, 0.5),
+        queryP95Ms: percentile(latencies, 0.95)
+      }
+    };
+  } finally {
+    try {
+      await runtime?.close();
+    } finally {
+      await workspace.cleanup();
+    }
+  }
+}
+async function evaluate(runtime, targets, iterations, latencies) {
+  const results = [];
+  for (const benchmarkCase of brainBenchmarkCases(targets)) {
+    let rank = null;
+    for (let iteration = 0; iteration < iterations; iteration += 1) {
+      const started = performance2.now();
+      const retrieved = await runtime.brain.retrieve({
+        actor: runtime.actor(benchmarkActorId),
+        query: benchmarkCase.query,
+        tier: "quick",
+        limit: 5
+      });
+      latencies.push(performance2.now() - started);
+      const currentRank = retrieved.results.findIndex(({ id }) => id === benchmarkCase.targetId);
+      if (currentRank >= 0) {
+        rank = rank === null ? currentRank + 1 : Math.min(rank, currentRank + 1);
+      }
+    }
+    results.push({
+      name: benchmarkCase.name,
+      query: benchmarkCase.query,
+      required: benchmarkCase.required,
+      recallAt5: rank === null ? 0 : 1,
+      rank
+    });
+  }
+  return results;
+}
+function elapsed(started) {
+  return Number((performance2.now() - started).toFixed(2));
+}
+function percentile(values, quantile) {
+  const sorted2 = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted2.length - 1, Math.max(0, Math.ceil(sorted2.length * quantile) - 1));
+  return Number((sorted2[index] ?? 0).toFixed(2));
+}
+
+// src/commands/benchmark.ts
+async function benchmarkCommand(command) {
+  return await runBrainRetrievalBenchmark(command);
 }
 
 // src/cli/main.ts
@@ -9008,6 +12015,12 @@ async function main(argv = process.argv.slice(2)) {
   }
 }
 async function run(command) {
+  if (command.command === "demo") {
+    return await demoCommand(command);
+  }
+  if (command.command === "benchmark") {
+    return await benchmarkCommand(command);
+  }
   if (command.command === "setup") {
     return await setupCommand(command);
   }
