@@ -29,11 +29,14 @@ test("host install uses host Tailscale Serve and reports both Tailnet surfaces",
   const obsidianProfile = await readFile(join(hostRoot, "obsidian-config", ".config", "obsidian", "obsidian.json"), "utf8");
   assert.match(obsidianProfile, /"path":"\/config\/Documents\/Skillloom"/u);
   assert.match(obsidianProfile, /"open":true/u);
+  assert.equal((await stat(join(hostRoot, "obsidian-config", "vault-shell"))).isDirectory(), true);
+  assert.equal((await stat(join(hostRoot, "obsidian-config", "vault-shell", "Library"))).isDirectory(), true);
+  assert.equal((await stat(join(hostRoot, "obsidian-config", "vault-shell", ".obsidian"))).isDirectory(), true);
+  assert.equal((await stat(join(hostRoot, "obsidian-config", "vault-shell", "Bases"))).isDirectory(), true);
+  assert.equal((await stat(join(hostRoot, "obsidian-config", "vault-shell", "Authoring"))).isDirectory(), true);
   assert.equal((await stat(join(hostRoot, "obsidian-config", "vault-config"))).isDirectory(), true);
   assert.equal((await stat(join(hostRoot, "data", "brain", "projections", "obsidian-vault"))).isDirectory(), true);
-  assert.equal((await stat(join(hostRoot, "data", "brain", "projections", "obsidian-vault", ".obsidian"))).isDirectory(), true);
-  assert.equal((await stat(join(hostRoot, "data", "brain", "projections", "obsidian-vault", "Bases"))).isDirectory(), true);
-  assert.equal((await stat(join(hostRoot, "data", "brain", "projections", "obsidian-vault", "Authoring"))).isDirectory(), true);
+  assert.equal((await stat(join(hostRoot, "data", "brain", "projections", "obsidian-vault", "Library"))).isDirectory(), true);
   assert.equal((await stat(join(hostRoot, "data", "brain", "obsidian-ui", "Bases"))).isDirectory(), true);
   const policy = await readFile(join(hostRoot, "policy.hujson"), "utf8");
   assert.match(policy, /src: \["owner@github"\]/u);

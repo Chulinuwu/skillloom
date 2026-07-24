@@ -116,6 +116,7 @@ Obsidian is an optional human browsing and authoring surface. It is not an autho
 
 - The browser surface listens on `127.0.0.1:3000`.
 - Tailscale Serve exposes it privately on HTTPS port `8443`.
+- The vault root is a writable UI shell. Only managed `Authoring/` paths are ingested; unmanaged root files remain noncanonical.
 - `Library/` is a generated Brain projection mounted read-only.
 - `Authoring/Inbox/` stages new supported human knowledge records, `Authoring/Curated/` stages revision-aware edits, `Authoring/Evidence/` preserves accepted input snapshots, and `Authoring/Conflicts/` preserves changes that need review.
 - The Hub waits for files to settle and then sends accepted changes through BrainService, preserving revisions, provenance, idempotency, audit, and deterministic conflicts.

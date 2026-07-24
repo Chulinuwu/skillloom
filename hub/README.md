@@ -14,7 +14,7 @@ Requirements:
 - Tailnet policy grants with `skillloom.io/cap/skillloom` app capabilities for users and tagged agents that should read, write, or publish through the Hub.
 - On Linux bind mounts, precreate `hub/data` with mode `0700` and ownership for uid `1000`, or equivalent host ownership that lets the runtime image's `node` user read and write it. The backup user must also be able to read it.
 
-Do not enable Funnel. Do not expose Docker ports beyond `127.0.0.1`. Do not mount the Docker socket into Obsidian. Keep the canonical `Library/` projection read-only; only the managed `Authoring/` staging tree is writable.
+Do not enable Funnel. Do not expose Docker ports beyond `127.0.0.1`. Do not mount the Docker socket into Obsidian. Keep the canonical `Library/` projection read-only. The vault shell and `Bases/` are writable UI state, while only the managed `Authoring/` tree is ingested.
 
 ## Plugin path
 
@@ -169,6 +169,7 @@ The Hub serves the same Brain and skill registry regardless of local mode. The H
 
 The Obsidian vault contains distinct trust zones:
 
+- The vault root is a writable UI shell required by Obsidian. Unmanaged root files are noncanonical UI-local state and are never ingested.
 - `Library/` is a read-only projection of canonical Brain records. Direct writes are unsupported.
 - `Authoring/Inbox/` stages new supported human knowledge records.
 - `Authoring/Curated/` stages revision-aware edits to supported mutable records.

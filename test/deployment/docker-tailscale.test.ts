@@ -24,14 +24,15 @@ test("compose exposes Hub only on host loopback for host Tailscale Serve", async
   assert.match(compose, /skillloom-hub:[\s\S]*networks:\n\s+- hub-runtime/u);
   assert.match(compose, /obsidian:[\s\S]*networks:\n\s+- obsidian-runtime/u);
 });
-test("compose exposes a hardened Obsidian library and isolated writable authoring workspace", async () => {
+test("compose exposes a writable Obsidian shell around a read-only library and isolated authoring workspace", async () => {
   const compose = await read("hub/compose.yaml");
   assert.match(compose, /lscr\.io\/linuxserver\/obsidian:v1\.12\.7-ls139/u);
   assert.match(compose, /"127\.0\.0\.1:3000:3000"/u);
   assert.match(compose, /HARDEN_DESKTOP: "true"/u);
   assert.match(compose, /START_DOCKER: "false"/u);
   assert.match(compose, /SELKIES_ENABLE_SHARING: "false"/u);
-  assert.match(compose, /brain\/projections\/obsidian-vault:\/config\/Documents\/Skillloom:ro/u);
+  assert.match(compose, /obsidian-config\}\/vault-shell:\/config\/Documents\/Skillloom:rw/u);
+  assert.match(compose, /brain\/projections\/obsidian-vault\/Library:\/config\/Documents\/Skillloom\/Library:ro/u);
   assert.match(compose, /obsidian-config\}\/vault-config:\/config\/Documents\/Skillloom\/\.obsidian:rw/u);
   assert.match(compose, /brain\/obsidian-ui\/Bases:\/config\/Documents\/Skillloom\/Bases:rw/u);
   assert.match(compose, /brain\/authoring:\/config\/Documents\/Skillloom\/Authoring:rw/u);
@@ -39,7 +40,6 @@ test("compose exposes a hardened Obsidian library and isolated writable authorin
   assert.doesNotMatch(compose, /brain\/projections\/obsidian:\/config\/Documents\/Skillloom\/Library/u);
   assert.doesNotMatch(compose, /:\/config\/Documents\/Skillloom\/Library\/Bases/u);
   assert.doesNotMatch(compose, /:\/config\/Documents\/Skillloom\/Authoring:ro/u);
-  assert.doesNotMatch(compose, /:\/config\/Documents\/Skillloom:rw/u);
   assert.match(compose, /SKILLLOOM_OBSIDIAN_AUTHORING_ENABLED: \$\{SKILLLOOM_OBSIDIAN_AUTHORING_ENABLED:-true\}/u);
   assert.match(compose, /SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS: \$\{SKILLLOOM_OBSIDIAN_AUTHORING_INTERVAL_MS:-1000\}/u);
 });

@@ -129,6 +129,7 @@ Detailed setup and recovery procedures live in the [Hub operator guide](hub/READ
 
 Open the Obsidian link reported by setup from a device in the same Tailnet.
 
+- The vault root is a writable UI shell so Obsidian can open it and maintain local UI state. Files created outside the managed directories are noncanonical and ignored by Skillloom.
 - `Library/` is the generated, read-only canonical projection.
 - `Bases/` stores writable Obsidian dashboard state.
 - `Authoring/Inbox/` stages new notes.

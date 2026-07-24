@@ -35,7 +35,8 @@ services:
     shm_size: 1gb
     volumes:
       - ${SKILLLOOM_OBSIDIAN_CONFIG_DIR:-./obsidian-config}:/config
-      - ${SKILLLOOM_HUB_DATA_DIR:-./data}/brain/projections/obsidian-vault:/config/Documents/Skillloom:ro
+      - ${SKILLLOOM_OBSIDIAN_CONFIG_DIR:-./obsidian-config}/vault-shell:/config/Documents/Skillloom:rw
+      - ${SKILLLOOM_HUB_DATA_DIR:-./data}/brain/projections/obsidian-vault/Library:/config/Documents/Skillloom/Library:ro
       - ${SKILLLOOM_OBSIDIAN_CONFIG_DIR:-./obsidian-config}/vault-config:/config/Documents/Skillloom/.obsidian:rw
       - ${SKILLLOOM_HUB_DATA_DIR:-./data}/brain/obsidian-ui/Bases:/config/Documents/Skillloom/Bases:rw
       - ${SKILLLOOM_HUB_DATA_DIR:-./data}/brain/authoring:/config/Documents/Skillloom/Authoring:rw

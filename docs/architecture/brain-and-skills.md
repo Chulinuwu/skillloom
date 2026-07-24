@@ -90,7 +90,7 @@ Skill patches include the base release hash. Divergent patches are preserved as 
 
 ## Human browsing
 
-Obsidian exposes a read-only `Library/` projection alongside writable staging:
+Obsidian opens a writable, noncanonical vault shell around a read-only `Library/` projection and managed writable staging. Files outside the managed directories are UI-local and ignored by Skillloom:
 
 - `Authoring/Inbox/` stages new notes, facts, decisions, projects, memories, claims, entities, and concepts.
 - `Authoring/Curated/` stages edits to those supported mutable types that carry a canonical artifact ID and base revision.

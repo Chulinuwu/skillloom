@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import {
@@ -362,9 +362,11 @@ test("rebuilds read-only Obsidian projection outside canonical writable vault", 
       sensitivity: "tailnet"
     });
     const result = await rebuildObsidianProjection(root, brain, actor);
+    const initialDirectory = await stat(result.root);
     assert.equal(result.root, join(root, "projections", "obsidian-vault", "Library"));
     const projectedPath = join(result.root, "human-knowledge", "note", `${captured.artifact.id}.md`);
     const projected = await readFile(projectedPath, "utf8");
+    const initialFile = await stat(projectedPath);
     const basePath = join(root, "obsidian-ui", "Bases", "Knowledge.base");
     const base = await readFile(basePath, "utf8");
     assert.equal(result.artifactCount, 1);
@@ -375,6 +377,18 @@ test("rebuilds read-only Obsidian projection outside canonical writable vault", 
     assert.match(base, /views:\n  - type: table/u);
     assert.equal(projectedPath.includes("vault/inbox"), false);
     assert.equal(projectedPath.includes("vault/curated"), false);
+    await rebuildObsidianProjection(root, brain, actor);
+    assert.equal((await stat(projectedPath)).ino, initialFile.ino);
+    await brain.update({
+      actor,
+      requestId: "projection-note-update",
+      artifactId: captured.artifact.id,
+      baseRevision: captured.artifact.revision,
+      content: "This projection is rebuildable and hot-reloads."
+    });
+    await rebuildObsidianProjection(root, brain, actor);
+    assert.equal((await stat(result.root)).ino, initialDirectory.ino);
+    assert.match(await readFile(projectedPath, "utf8"), /hot-reloads/u);
     await writeFile(basePath, "views:\n  - type: table\n    name: Custom view\n");
     const staging = join(root, "projections", "obsidian-staging");
     await mkdir(join(staging, "next"), { recursive: true });
