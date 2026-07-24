@@ -54,7 +54,7 @@ test("setup output prints source-bound evidence and redacts secret snippets", ()
   assert.doesNotMatch(output, /tskey-secret/u);
 });
 
-test("host output distinguishes the read-only Library from writable Authoring staging", () => {
+test("host output distinguishes the managed Library projection from writable Authoring staging", () => {
   const output = formatOutput({
     command: "host",
     action: "status",
@@ -69,14 +69,14 @@ test("host output distinguishes the read-only Library from writable Authoring st
         externalPort: 8443,
         internalPort: 3000,
         workspaces: {
-          library: { path: "Library", access: "read-only" },
+          library: { path: "Library", access: "managed-projection" },
           dashboards: { path: "Bases", access: "writable-ui-state" },
           authoring: { path: "Authoring", access: "writable-staging" }
         }
       }
     }
   }, false);
-  assert.match(output, /^obsidian: .*Library read-only, Bases writable-ui-state, Authoring writable-staging\)$/mu);
+  assert.match(output, /^obsidian: .*Library managed-projection, Bases writable-ui-state, Authoring writable-staging\)$/mu);
 });
 
 test("demo and benchmark output expose proof and measured limits", () => {

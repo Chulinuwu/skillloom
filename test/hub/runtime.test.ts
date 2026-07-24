@@ -12,7 +12,7 @@ import { OBSIDIAN_AUTHORING_ACTOR_ID, createRuntimeBrainPermissions, createRunti
 import { createHubRuntime } from "../../src/hub/runtime/service.js";
 import { loadHubRuntimeState } from "../../src/hub/runtime/state.js";
 import { authorizeTailscaleServeRequest } from "../../src/hub/tailscale/headers.js";
-import type { BrainDerivedProjectionPort } from "../../src/hub/brain/index.js";
+import { obsidianProjectionFilename, type BrainDerivedProjectionPort } from "../../src/hub/brain/index.js";
 import { createHubAuthorizationService, HubAuthorizationError, type HubAuthorizationContext, type HubRole } from "../../src/hub/auth/index.js";
 import { HUB_PROTOCOL_VERSION, parseNegotiationResponse } from "../../src/hub/protocol/index.js";
 import { tempDir } from "../helpers/fixtures.js";
@@ -270,13 +270,13 @@ test("runtime refreshes Obsidian projection after brain mutations and recovers a
     }, authHeaders("alice@example.com", [{ roles: ["contributor"] }]));
     assert.equal(capture.status, 201);
     artifactId = (capture.body as { data: { artifact: { id: string } } }).data.artifact.id;
-    assert.match(await readFile(join(dataDir, "brain", "projections", "obsidian-vault", "Library", "human-knowledge", "note", `${artifactId}.md`), "utf8"), /Runtime projected note/u);
+    assert.match(await readFile(join(dataDir, "brain", "projections", "obsidian-vault", "Library", "human-knowledge", "note", obsidianProjectionFilename("Runtime projected note", artifactId)), "utf8"), /Runtime projected note/u);
   } finally {
     await first.close();
   }
   const second = await createHubRuntime(env);
   try {
-    assert.match(await readFile(join(dataDir, "brain", "projections", "obsidian-vault", "Library", "human-knowledge", "note", `${artifactId}.md`), "utf8"), /Projection is refreshed by the runtime/u);
+    assert.match(await readFile(join(dataDir, "brain", "projections", "obsidian-vault", "Library", "human-knowledge", "note", obsidianProjectionFilename("Runtime projected note", artifactId)), "utf8"), /Projection is refreshed by the runtime/u);
   } finally {
     await second.close();
   }

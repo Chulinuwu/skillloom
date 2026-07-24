@@ -62,7 +62,7 @@ flowchart LR
             API --> BRAIN
             API --> INDEX
             API --> REGISTRY
-            BRAIN -->|read-only Library projection| OBSIDIAN
+    BRAIN -->|writable managed Library projection| OBSIDIAN
             OBSIDIAN --> AUTHORING
             AUTHORING -->|revision-aware sync| API
         end
@@ -117,10 +117,10 @@ Obsidian is an optional human browsing and authoring surface. It is not an autho
 - The browser surface listens on `127.0.0.1:3000`.
 - Tailscale Serve exposes it privately on HTTPS port `8443`.
 - The vault root is a writable UI shell. Only managed `Authoring/` paths are ingested; unmanaged root files remain noncanonical.
-- `Library/` is a generated Brain projection mounted read-only.
+- `Library/` is a generated Brain projection mounted writable so Obsidian autosave and property normalization cannot fail.
 - `Authoring/Inbox/` stages new supported human knowledge records, `Authoring/Curated/` stages revision-aware edits, `Authoring/Evidence/` preserves accepted input snapshots, and `Authoring/Conflicts/` preserves changes that need review.
 - The Hub waits for files to settle and then sends accepted changes through BrainService, preserving revisions, provenance, idempotency, audit, and deterministic conflicts.
-- Direct SMB, NFS, SSHFS, Taildrive, or native Obsidian writes to `Library/` or canonical Brain files are unsupported.
+- `Library/` edits are noncanonical and may be replaced on refresh. Direct SMB, NFS, SSHFS, Taildrive, or native writes to canonical Brain files are unsupported.
 
 The filesystem authoring bridge cannot recover an individual Tailnet identity from an Obsidian file change, so it records `local:obsidian-authoring` as a synthetic local actor with Brain capture and update authority only. Humans and agents that need individual attribution use authenticated MCP or HTTP. Hermes auto-curates through those APIs under Contributor capability, not through direct filesystem writes.
 

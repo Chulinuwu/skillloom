@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { brainLayout } from "./layout.js";
 import { ensureObsidianBases } from "./obsidian-bases.js";
 import { synchronizeProjectionDirectory } from "./obsidian-projection-sync.js";
+import { obsidianProjectionFilename } from "./obsidian-projection-path.js";
 import type { BrainService } from "./service.js";
 import type { BrainActor, BrainArtifact } from "./types.js";
 
@@ -43,13 +44,14 @@ export async function rebuildObsidianProjectionFromArtifacts(root: string, artif
 async function writeArtifactProjection(root: string, artifact: BrainArtifact): Promise<void> {
   const directory = join(root, artifact.layer, artifact.type);
   await mkdir(directory, { recursive: true });
-  await writeFile(join(directory, `${artifact.id}.md`), projectionMarkdown(artifact), { mode: 0o444 });
+  await writeFile(join(directory, obsidianProjectionFilename(artifact.title, artifact.id)), projectionMarkdown(artifact), { mode: 0o644 });
 }
 
 function projectionMarkdown(artifact: BrainArtifact): string {
   return `---\n${JSON.stringify({
     skillloomProjection: true,
-    readOnly: true,
+    managedProjection: true,
+    readOnly: false,
     canonicalArtifactId: artifact.id,
     canonicalRevision: artifact.revision,
     title: artifact.title,

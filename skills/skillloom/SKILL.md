@@ -40,6 +40,6 @@ After a successful mutation, say what was saved or updated, why it was worth kee
 
 ## Human view and Agent Skills
 
-When the user asks to browse the vault, run `node <runner> host status --json` and provide the generated Obsidian Web UI URL as a clickable link. Explain that `Library/` is the read-only canonical view and `Authoring/` is governed human staging. Do not guess a hostname.
+When the user asks to browse the vault, run `node <runner> host status --json` and provide the generated Obsidian Web UI URL as a clickable link. Explain that `Library/` is a writable managed view whose edits may be replaced and `Authoring/` is governed durable human staging. Do not guess a hostname.
 
 If a repeated, verified procedure appears reusable, explain that it may be a skill candidate. Use `$capture-learning` for the governed candidate workflow rather than storing executable instructions as an ordinary Brain note.

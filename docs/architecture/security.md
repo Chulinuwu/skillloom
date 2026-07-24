@@ -33,7 +33,7 @@ The Obsidian filesystem bridge is a narrower local principal, not a Tailnet role
 - No Hub or Obsidian Docker port bound beyond host loopback.
 - No shared canonical Brain vault or `.skillloom` network mount.
 - No unmanaged file in the writable Obsidian vault shell becomes canonical or enters the authoring bridge.
-- No direct write access to the Obsidian `Library/` projection or canonical Brain files.
+- No direct write access to canonical Brain files. Obsidian may write to the disposable `Library/` projection, but those writes are never authoritative.
 - No Obsidian Authoring write can publish or promote a skill.
 - No trust based only on source IP or caller-supplied headers.
 - No Brain artifact executes as instruction without governed promotion.

@@ -9,7 +9,7 @@ Skillloom overlaps with memory and Obsidian tools, but its main boundary is diff
 | Primary job | Automatic session memory and context continuity | Curated shared knowledge plus governed skill lifecycle |
 | Capture | Hooks observe work and compress observations | Bounded Brain records and explicit or Hermes-curated decisions |
 | Retrieval | Automatic context injection and memory search | Explicit retrieval in `manual` and `policy`, bounded recall in `hermes` |
-| Human surface | Purpose-built memory viewer | Obsidian with read-only Library and governed Authoring staging |
+| Human surface | Purpose-built memory viewer | Obsidian with writable managed Library and governed Authoring staging |
 | Skills | Memory search can be exposed through a skill | Candidate, proof, validation, policy, promotion, recovery, rollback, signed registry |
 
 Short version: claude-mem helps an agent remember what happened. Skillloom helps multiple agents share what is worth keeping and controls when a proved procedure may become executable.

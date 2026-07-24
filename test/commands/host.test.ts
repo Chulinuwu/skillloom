@@ -21,7 +21,7 @@ test("host install uses host Tailscale Serve and reports both Tailnet surfaces",
   assert.equal(result.surfaces?.obsidian.externalPort, 8443);
   assert.equal(result.surfaces?.obsidian.internalPort, 3000);
   assert.deepEqual(result.surfaces?.obsidian.workspaces, {
-    library: { path: "Library", access: "read-only" },
+    library: { path: "Library", access: "managed-projection" },
     dashboards: { path: "Bases", access: "writable-ui-state" },
     authoring: { path: "Authoring", access: "writable-staging" }
   });

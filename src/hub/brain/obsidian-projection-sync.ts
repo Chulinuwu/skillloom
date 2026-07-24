@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
 import { atomicWriteFile } from "../../files/atomic-write.js";
 
@@ -54,10 +54,13 @@ async function ensureDirectory(path: string): Promise<void> {
 async function synchronizeFile(source: string, target: string): Promise<void> {
   const data = await readFile(source);
   const kind = await existingKind(target);
-  if (kind === "file" && (await readFile(target)).equals(data)) return;
+  if (kind === "file" && (await readFile(target)).equals(data)) {
+    await chmod(target, 0o644);
+    return;
+  }
   if (kind !== null) await rm(target, { recursive: true, force: true });
   await mkdir(dirname(target), { recursive: true });
-  await atomicWriteFile(target, data, { mode: 0o444 });
+  await atomicWriteFile(target, data, { mode: 0o644 });
 }
 
 async function existingKind(path: string): Promise<EntryKind | null> {

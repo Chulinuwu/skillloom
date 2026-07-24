@@ -14,7 +14,7 @@ Requirements:
 - Tailnet policy grants with `skillloom.io/cap/skillloom` app capabilities for users and tagged agents that should read, write, or publish through the Hub.
 - On Linux bind mounts, precreate `hub/data` with mode `0700` and ownership for uid `1000`, or equivalent host ownership that lets the runtime image's `node` user read and write it. The backup user must also be able to read it.
 
-Do not enable Funnel. Do not expose Docker ports beyond `127.0.0.1`. Do not mount the Docker socket into Obsidian. Keep the canonical `Library/` projection read-only. The vault shell and `Bases/` are writable UI state, while only the managed `Authoring/` tree is ingested.
+Do not enable Funnel. Do not expose Docker ports beyond `127.0.0.1`. Do not mount the Docker socket into Obsidian. Keep canonical Brain storage outside Obsidian. `Library/` is a writable, disposable UI projection so Obsidian can autosave safely; only the managed `Authoring/` tree is ingested as durable human input.
 
 ## Plugin path
 
@@ -170,7 +170,7 @@ The Hub serves the same Brain and skill registry regardless of local mode. The H
 The Obsidian vault contains distinct trust zones:
 
 - The vault root is a writable UI shell required by Obsidian. Unmanaged root files are noncanonical UI-local state and are never ingested.
-- `Library/` is a read-only projection of canonical Brain records. Direct writes are unsupported.
+- `Library/` is a writable managed projection of canonical Brain records. Obsidian may save it, but direct edits are noncanonical and may be replaced.
 - `Authoring/Inbox/` stages new supported human knowledge records.
 - `Authoring/Curated/` stages revision-aware edits to supported mutable records.
 - `Authoring/Evidence/` preserves exact accepted input snapshots and is system-maintained.
@@ -186,7 +186,7 @@ On a successful Inbox import, the loop removes the staged file after it has writ
 
 The Obsidian web desktop cannot prove which individual Tailnet user changed a filesystem file. These writes are attributed to `local:obsidian-authoring`, a synthetic local actor limited to Brain capture and update. Use authenticated MCP or HTTP for per-user or per-agent attribution. Hermes uses those authenticated APIs under Contributor capability and does not write canonical files directly.
 
-No Authoring directory can publish or promote a skill. A reusable procedure still needs immutable candidate capture, validation, policy, and the normal promotion transaction. Direct Obsidian Desktop, network-share, or filesystem-sync writes to `Library/` or the canonical Brain remain unsupported.
+No Authoring directory can publish or promote a skill. A reusable procedure still needs immutable candidate capture, validation, policy, and the normal promotion transaction. Direct writes to canonical Brain storage remain unsupported; `Library/` is only a rebuildable UI projection.
 
 Tailscale Serve strips spoofed incoming identity and app-capability headers before forwarding. Human-owned devices can provide a user login header. Tagged devices do not provide a user login, so Skillloom must authorize tagged agents from the signed app capability value, not from IP address or hostname.
 

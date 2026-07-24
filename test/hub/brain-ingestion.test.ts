@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import {
@@ -9,6 +9,7 @@ import {
   FileObsidianProjectionManager,
   importHumanInbox,
   ingestImmutableSource,
+  obsidianProjectionFilename,
   rebuildObsidianProjection,
   stageHumanInboxNote,
   type BrainActor,
@@ -277,7 +278,15 @@ test("projection manager retries dirty projection and never fails committed muta
     projection: new FileObsidianProjectionManager(root)
   });
   try {
-    const projected = await readFile(join(root, "projections", "obsidian-vault", "Library", "human-knowledge", "note", `${artifactId}.md`), "utf8");
+    const projected = await readFile(join(
+      root,
+      "projections",
+      "obsidian-vault",
+      "Library",
+      "human-knowledge",
+      "note",
+      obsidianProjectionFilename("Committed despite projection failure", artifactId)
+    ), "utf8");
     assert.match(projected, /Committed despite projection failure/u);
   } finally {
     await rebuilt.close();
@@ -348,7 +357,7 @@ test("imports human inbox files idempotently and records stale revision conflict
   }
 });
 
-test("rebuilds read-only Obsidian projection outside canonical writable vault", async () => {
+test("rebuilds a writable managed Obsidian projection outside the canonical store", async () => {
   const root = await tempDir("skillloom-obsidian-projection-");
   const brain = await createBrainService({ root, permissions: new AllowingPermissions() });
   try {
@@ -364,19 +373,24 @@ test("rebuilds read-only Obsidian projection outside canonical writable vault", 
     const result = await rebuildObsidianProjection(root, brain, actor);
     const initialDirectory = await stat(result.root);
     assert.equal(result.root, join(root, "projections", "obsidian-vault", "Library"));
-    const projectedPath = join(result.root, "human-knowledge", "note", `${captured.artifact.id}.md`);
+    const projectedDirectory = join(result.root, "human-knowledge", "note");
+    const projectedNames = await readdir(projectedDirectory);
+    assert.deepEqual(projectedNames, [`Projected note [${captured.artifact.id.slice(0, 8)}].md`]);
+    const projectedPath = join(projectedDirectory, projectedNames[0]!);
     const projected = await readFile(projectedPath, "utf8");
     const initialFile = await stat(projectedPath);
     const basePath = join(root, "obsidian-ui", "Bases", "Knowledge.base");
     const base = await readFile(basePath, "utf8");
     assert.equal(result.artifactCount, 1);
     assert.match(projected, /"skillloomProjection":true/);
-    assert.match(projected, /"readOnly":true/);
+    assert.match(projected, /"managedProjection":true/);
+    assert.match(projected, /"readOnly":false/);
     assert.match(base, /^filters:\n  and:\n    - 'skillloomProjection == true'/u);
     assert.match(base, /properties:\n  title:\n    displayName: Title/u);
     assert.match(base, /views:\n  - type: table/u);
     assert.equal(projectedPath.includes("vault/inbox"), false);
     assert.equal(projectedPath.includes("vault/curated"), false);
+    assert.equal(initialFile.mode & 0o777, 0o644);
     await rebuildObsidianProjection(root, brain, actor);
     assert.equal((await stat(projectedPath)).ino, initialFile.ino);
     await brain.update({

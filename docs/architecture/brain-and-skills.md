@@ -30,7 +30,7 @@ The Hub stores canonical Brain artifacts as Markdown plus attachments. SQLite co
 - Full-text search data.
 - Idempotency records and audit events.
 
-Canonical Markdown is the content source of truth. SQLite and the read-only Obsidian Library projection are rebuildable from canonical artifacts and durable audit state. Obsidian Authoring files are staged inputs and conflict evidence, not a second source of truth.
+Canonical Markdown is the content source of truth. SQLite and the writable managed Obsidian Library projection are rebuildable from canonical artifacts and durable audit state. Obsidian Authoring files are staged inputs and conflict evidence, not a second source of truth.
 
 ### Skill registry
 
@@ -90,7 +90,7 @@ Skill patches include the base release hash. Divergent patches are preserved as 
 
 ## Human browsing
 
-Obsidian opens a writable, noncanonical vault shell around a read-only `Library/` projection and managed writable staging. Files outside the managed directories are UI-local and ignored by Skillloom:
+Obsidian opens a writable, noncanonical vault shell around a writable managed `Library/` projection and governed staging. Library writes satisfy editor autosave but are disposable; files outside the managed directories are UI-local and ignored by Skillloom:
 
 - `Authoring/Inbox/` stages new notes, facts, decisions, projects, memories, claims, entities, and concepts.
 - `Authoring/Curated/` stages edits to those supported mutable types that carry a canonical artifact ID and base revision.

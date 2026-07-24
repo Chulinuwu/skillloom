@@ -5,6 +5,7 @@ export * from "./authoring-types.js";
 export * from "./authoring-policy.js";
 export * from "./obsidian-authoring.js";
 export * from "./obsidian-projection.js";
+export * from "./obsidian-projection-path.js";
 export * from "./projection-manager.js";
 export * from "./health.js";
 export * from "./retrieval-scoring.js";
