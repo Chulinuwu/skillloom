@@ -65,7 +65,7 @@ test("native Windows setup discovers and runs a command shim with spaced argumen
       pathExt: ".CMD",
       commandInterpreter: process.env.ComSpec ?? "cmd.exe"
     });
-    assert.equal(await processes.findExecutable("skillloom-test"), executable);
+    assert.equal((await processes.findExecutable("skillloom-test"))?.toLowerCase(), executable.toLowerCase());
     assert.deepEqual(await processes.run(executable, ["value with spaces"]), {
       exitCode: 0,
       stdout: "value with spaces",
