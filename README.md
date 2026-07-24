@@ -28,6 +28,8 @@ The normal setup flow operates only on the device where the agent process is run
 
 If another device should become the Main Hub, open the same repository link with an agent running on that device and say "Make this device my Main Hub." Do not enable remote administration just for Skillloom. After that Hub is verified, run the link flow independently on every additional device and choose Client Node.
 
+The Main Hub and Client Nodes may use different operating systems. Native Windows setup resolves `.exe`, `.cmd`, and `.bat` tools, while macOS and Linux use their native executables. The agent should run the bundled setup before discussing platform limitations and should stop only on a prerequisite failure it can show.
+
 On a supported host, the agent handles checkout, plugin installation, local host integrations, local Hub startup or connection, health checks, and final links. A newly installed plugin may require a fresh task before its skills and MCP bridge appear.
 
 If you already know the role, include it in the same message:
@@ -134,14 +136,14 @@ Detailed setup and recovery procedures live in the [Hub operator guide](hub/READ
 Open the Obsidian link reported by setup from a device in the same Tailnet.
 
 - The vault root is a writable UI shell so Obsidian can open it and maintain local UI state. Files created outside the managed directories are noncanonical and ignored by Skillloom.
-- `Library/` is the generated, read-only canonical projection.
+- `Library/` is a generated, writable managed projection with human-readable filenames.
 - `Bases/` stores writable Obsidian dashboard state.
 - `Authoring/Inbox/` stages new notes.
 - `Authoring/Curated/` stages revision-aware edits.
 - `Authoring/Evidence/` preserves accepted snapshots.
 - `Authoring/Conflicts/` preserves stale or invalid edits.
 
-Accepted captures and updates pass through BrainService. Direct edits to `Library/` or canonical Brain files are unsupported. Browser filesystem events cannot prove the individual Tailnet identity, so Obsidian authoring uses the narrow synthetic actor `local:obsidian-authoring`. Use authenticated MCP or HTTP when individual attribution matters.
+Accepted captures and updates pass through BrainService. Obsidian may write to `Library/` for editor bookkeeping, but those projection edits are noncanonical and may be replaced on refresh. Durable edits go through `Authoring/`, MCP, or HTTP. Browser filesystem events cannot prove the individual Tailnet identity, so Obsidian authoring uses the narrow synthetic actor `local:obsidian-authoring`. Use authenticated MCP or HTTP when individual attribution matters.
 
 Obsidian authoring cannot publish or promote a skill.
 
@@ -157,7 +159,7 @@ The current baseline assumes one owned deployment inside one Tailnet. Organizati
 | --- | --- | --- |
 | Local-only Brain and skill lifecycle | Supported baseline | One machine |
 | Main Hub | Supported baseline | One designated Hub and one owned data volume |
-| Client Nodes | Supported baseline | Devices that can reach the same Tailnet |
+| Client Nodes | Supported baseline | Mixed-OS macOS, Linux, and native Windows devices that can reach the same Tailnet |
 | Shared agent knowledge | Supported baseline | Authenticated MCP or HTTP |
 | Obsidian browsing and authoring | Supported baseline | Governed Markdown records, synthetic filesystem actor |
 | Claude Code lifecycle hooks | Supported baseline | Automatic where the host exposes compatible hooks |

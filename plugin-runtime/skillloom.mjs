@@ -4422,21 +4422,7 @@ var artifactType = { type: "string", enum: brainArtifactTypes };
 var artifactLayer = { type: "string", enum: brainArtifactLayers };
 var sensitivity = { type: "string", enum: ["private", "tailnet", "restricted"] };
 var jsonObject = { type: "object" };
-var sourceMetadata = {
-  type: "object",
-  properties: {
-    sourceId: { type: "string", minLength: 1 },
-    capturedAt: { type: "string" },
-    contentHash: { type: "string", pattern: "^sha256:[0-9a-f]{64}$" },
-    uri: { type: "string", minLength: 1 },
-    title: { type: "string", minLength: 1 },
-    mediaType: { type: "string", minLength: 1 },
-    fetchedAt: { type: "string" },
-    retrievedBy: { type: "string", minLength: 1 }
-  },
-  required: ["sourceId", "capturedAt", "contentHash"],
-  additionalProperties: false
-};
+var semanticValue = {};
 var artifactDetails = {
   anyOf: [
     { type: "object", properties: { kind: { type: "string", enum: ["none"] } }, required: ["kind"], additionalProperties: false },
@@ -4618,23 +4604,23 @@ var definitions = [
   },
   {
     name: "brain_capture",
-    description: "Capture a new second-brain artifact with an idempotent request ID.",
+    description: "Capture a new second-brain artifact. Semantic metadata is normalized without data loss and reported in provenance.skillloomCapture; server-owned identity fields remain forbidden.",
     inputSchema: {
       type: "object",
       properties: {
         requestId,
-        type: artifactType,
+        type: { type: "string" },
         title: { type: "string", minLength: 1, maxLength: 500 },
         content: { type: "string", maxLength: 2e6 },
         frontmatter: jsonObject,
         provenance: jsonObject,
-        layer: artifactLayer,
-        source: sourceMetadata,
-        details: artifactDetails,
-        sensitivity
+        layer: { type: "string" },
+        source: semanticValue,
+        details: semanticValue,
+        sensitivity: { type: "string" }
       },
-      required: ["requestId", "type", "title", "content", "provenance", "sensitivity"],
-      additionalProperties: false
+      required: ["requestId", "title", "content"],
+      additionalProperties: true
     }
   },
   {
@@ -7117,11 +7103,147 @@ function timestamp(value, field, invalid2) {
   return value;
 }
 
+// src/hub/mcp/capture-normalization.ts
+import { Buffer as Buffer2 } from "node:buffer";
+
+// src/hub/mcp/capture-normalization-config.ts
+var brainCaptureFields = [
+  "requestId",
+  "type",
+  "layer",
+  "title",
+  "content",
+  "frontmatter",
+  "provenance",
+  "source",
+  "details",
+  "sensitivity"
+];
+var reservedBrainCaptureFields = [
+  "actor",
+  "actorId",
+  "artifactId",
+  "createdAt",
+  "createdBy",
+  "id",
+  "revision",
+  "updatedAt",
+  "updatedBy"
+];
+
+// src/hub/mcp/capture-normalization.ts
+function normalizeBrainMcpCapture(value) {
+  if (!isJsonRecord2(value)) throw validationError("brain_capture arguments must be a JSON object");
+  if (Buffer2.byteLength(JSON.stringify(value), "utf8") > 225e4) {
+    throw validationError("brain_capture arguments exceed the 2250000 byte limit");
+  }
+  const reserved = reservedBrainCaptureFields.filter((field) => field in value);
+  if (reserved.length > 0) {
+    throw validationError(`brain_capture cannot set server-owned fields: ${reserved.join(", ")}`);
+  }
+  if (!isCanonicalUuid(value.requestId)) {
+    throw validationError("requestId must be a canonical lowercase UUID");
+  }
+  if (typeof value.title !== "string" || typeof value.content !== "string") {
+    throw validationError("brain_capture title and content must be strings");
+  }
+  const state = {
+    normalizedFields: /* @__PURE__ */ new Set(),
+    observed: {}
+  };
+  let type = normalizedType(value.type, state);
+  const normalizedDetails = normalizeDetails(type, value.details, state);
+  type = normalizedDetails.type;
+  const layer = defaultBrainLayer(type);
+  if (value.layer !== void 0 && (!isBrainArtifactLayer2(value.layer) || value.layer !== layer)) {
+    observe(state, "layer", value.layer);
+  }
+  const source = normalizeSource(value.source, state);
+  const frontmatter = normalizeRecord("frontmatter", value.frontmatter, state);
+  const suppliedProvenance = normalizeRecord("provenance", value.provenance, state);
+  if (suppliedProvenance.skillloomCapture !== void 0) {
+    state.observed.priorSkillloomCapture = suppliedProvenance.skillloomCapture;
+  }
+  const unmapped = unknownKeys(value, brainCaptureFields);
+  if (unmapped.length > 0) {
+    state.observed.unmapped = Object.fromEntries(unmapped.map((field) => [field, value[field]]));
+  }
+  const sensitivity2 = isBrainSensitivity2(value.sensitivity) ? value.sensitivity : "private";
+  if (value.sensitivity !== sensitivity2) observe(state, "sensitivity", value.sensitivity ?? null);
+  return {
+    requestId: value.requestId,
+    type,
+    layer,
+    title: value.title,
+    content: value.content,
+    frontmatter,
+    provenance: {
+      ...suppliedProvenance,
+      skillloomCapture: {
+        schemaVersion: 1,
+        receivedFields: Object.keys(value).sort(),
+        normalizedFields: [...state.normalizedFields].sort(),
+        observed: state.observed
+      }
+    },
+    ...source === void 0 ? {} : { source },
+    details: normalizedDetails.details,
+    sensitivity: sensitivity2
+  };
+}
+function normalizedType(value, state) {
+  if (isBrainArtifactType2(value)) return value;
+  observe(state, "type", value ?? null);
+  return "note";
+}
+function normalizeDetails(type, value, state) {
+  if (value !== void 0) {
+    try {
+      const details = parseBrainArtifactDetails(value);
+      validateBrainArtifactConsistency(type, defaultBrainLayer(type), details);
+      return { type, details };
+    } catch {
+      observe(state, "details", value);
+    }
+  }
+  if (requiresTypedDetails(type)) {
+    state.normalizedFields.add("type");
+    state.observed.type ??= type;
+    return { type: "note", details: { kind: "none" } };
+  }
+  return { type, details: { kind: "none" } };
+}
+function normalizeSource(value, state) {
+  if (value === void 0) return void 0;
+  try {
+    return parseBrainSourceMetadata(value);
+  } catch {
+    observe(state, "source", value);
+    return void 0;
+  }
+}
+function normalizeRecord(field, value, state) {
+  if (value === void 0) return {};
+  if (isJsonRecord2(value)) return value;
+  observe(state, field, value);
+  return {};
+}
+function observe(state, field, value) {
+  state.normalizedFields.add(field);
+  state.observed[field] = value;
+}
+function requiresTypedDetails(type) {
+  return type === "bounded-episode" || type === "workflow" || type === "feedback" || type === "rejected-update";
+}
+function validationError(message2) {
+  return new BrainMcpError("BRAIN_MCP_VALIDATION_ERROR", message2);
+}
+
 // src/hub/mcp/schema.ts
 function parseBrainMcpSearch(value) {
   const input = strictObject(value, ["query", "type", "limit"]);
   if (typeof input.query !== "string" || input.type !== void 0 && !isBrainArtifactType2(input.type) || input.limit !== void 0 && (typeof input.limit !== "number" || !Number.isInteger(input.limit) || input.limit < 1 || input.limit > 50)) {
-    throw validationError("brain_search arguments have invalid field types");
+    throw validationError2("brain_search arguments have invalid field types");
   }
   return {
     query: input.query,
@@ -7132,7 +7254,7 @@ function parseBrainMcpSearch(value) {
 function parseBrainMcpRetrieve(value) {
   const input = strictObject(value, ["query", "tier", "limit", "filters"]);
   if (typeof input.query !== "string" || input.tier !== void 0 && input.tier !== "quick" && input.tier !== "standard" && input.tier !== "deep" || input.limit !== void 0 && (typeof input.limit !== "number" || !Number.isInteger(input.limit) || input.limit < 1 || input.limit > 40) || input.filters !== void 0 && !isRecord10(input.filters)) {
-    throw validationError("brain_retrieve arguments have invalid field types");
+    throw validationError2("brain_retrieve arguments have invalid field types");
   }
   return {
     query: input.query,
@@ -7150,27 +7272,12 @@ function parseBrainMcpRead(value) {
   return { artifactId: uuid(input.artifactId, "artifactId") };
 }
 function parseBrainMcpCapture(value) {
-  const input = strictObject(value, ["requestId", "type", "layer", "title", "content", "frontmatter", "provenance", "source", "details", "sensitivity"]);
-  if (!isBrainArtifactType2(input.type) || typeof input.title !== "string" || typeof input.content !== "string" || !isJsonRecord2(input.provenance) || !isBrainSensitivity2(input.sensitivity) || input.layer !== void 0 && !isBrainArtifactLayer2(input.layer) || input.source !== void 0 && !isJsonRecord2(input.source) || input.details !== void 0 && !isJsonRecord2(input.details) || input.frontmatter !== void 0 && !isJsonRecord2(input.frontmatter)) {
-    throw validationError("brain_capture arguments have invalid field types");
-  }
-  return {
-    requestId: uuid(input.requestId, "requestId"),
-    type: input.type,
-    ...input.layer === void 0 ? {} : { layer: input.layer },
-    title: input.title,
-    content: input.content,
-    ...input.frontmatter === void 0 ? {} : { frontmatter: input.frontmatter },
-    provenance: input.provenance,
-    ...input.source === void 0 ? {} : { source: parseSourceInput(input.source) },
-    ...input.details === void 0 ? {} : { details: parseDetailsInput(input.details) },
-    sensitivity: input.sensitivity
-  };
+  return normalizeBrainMcpCapture(value);
 }
 function parseBrainMcpUpdate(value) {
   const input = strictObject(value, ["requestId", "artifactId", "baseRevision", "type", "layer", "title", "content", "frontmatter", "provenance", "details", "sensitivity"]);
   if (typeof input.baseRevision !== "string" || input.type !== void 0 && !isBrainArtifactType2(input.type) || input.layer !== void 0 && !isBrainArtifactLayer2(input.layer) || input.title !== void 0 && typeof input.title !== "string" || input.content !== void 0 && typeof input.content !== "string" || input.frontmatter !== void 0 && !isJsonRecord2(input.frontmatter) || input.provenance !== void 0 && !isJsonRecord2(input.provenance) || input.details !== void 0 && !isJsonRecord2(input.details) || input.sensitivity !== void 0 && !isBrainSensitivity2(input.sensitivity)) {
-    throw validationError("brain_update arguments have invalid field types");
+    throw validationError2("brain_update arguments have invalid field types");
   }
   return {
     requestId: uuid(input.requestId, "requestId"),
@@ -7188,7 +7295,7 @@ function parseBrainMcpUpdate(value) {
 }
 function parseBrainMcpLink(value) {
   const input = strictObject(value, ["requestId", "sourceArtifactId", "targetArtifactId", "relationship"]);
-  if (typeof input.relationship !== "string") throw validationError("brain_link arguments have invalid field types");
+  if (typeof input.relationship !== "string") throw validationError2("brain_link arguments have invalid field types");
   return {
     requestId: uuid(input.requestId, "requestId"),
     sourceArtifactId: uuid(input.sourceArtifactId, "sourceArtifactId"),
@@ -7205,51 +7312,51 @@ function parseRegistryMcpPropose(value) {
     capabilities: capabilities(input.capabilities),
     provenance: provenance(input.provenance),
     files: files(input.files),
-    ...input.workflowProof === void 0 ? {} : { workflowProof: parseWorkflowProofDecision(input.workflowProof, validationError) }
+    ...input.workflowProof === void 0 ? {} : { workflowProof: parseWorkflowProofDecision(input.workflowProof, validationError2) }
   };
 }
 function parseRegistryMcpPublish(value) {
   const input = strictObject(value, ["requestId", "candidateId", "version", "channel", "workflowProof"]);
-  if (input.channel !== "stable") throw validationError("skill_publish channel must be stable");
+  if (input.channel !== "stable") throw validationError2("skill_publish channel must be stable");
   return {
     requestId: uuid(input.requestId, "requestId"),
     candidateId: text2(input.candidateId, "candidateId"),
     version: semanticVersion(input.version),
     channel: "stable",
-    ...input.workflowProof === void 0 ? {} : { workflowProof: parseWorkflowProofDecision(input.workflowProof, validationError) }
+    ...input.workflowProof === void 0 ? {} : { workflowProof: parseWorkflowProofDecision(input.workflowProof, validationError2) }
   };
 }
 function strictObject(value, allowedKeys) {
-  if (!isRecord10(value)) throw validationError("Tool arguments must be an object");
+  if (!isRecord10(value)) throw validationError2("Tool arguments must be an object");
   const unknown = unknownKeys(value, allowedKeys);
-  if (unknown.length > 0) throw validationError(`Unknown tool arguments: ${unknown.sort().join(", ")}`);
+  if (unknown.length > 0) throw validationError2(`Unknown tool arguments: ${unknown.sort().join(", ")}`);
   return value;
 }
 function uuid(value, field) {
-  if (!isCanonicalUuid(value)) throw validationError(`${field} must be a canonical lowercase UUID`);
+  if (!isCanonicalUuid(value)) throw validationError2(`${field} must be a canonical lowercase UUID`);
   return value;
 }
 function text2(value, field) {
   if (typeof value !== "string" || value.length === 0 || value !== value.trim() || value.includes("\0")) {
-    throw validationError(`${field} must be canonical non-empty text`);
+    throw validationError2(`${field} must be canonical non-empty text`);
   }
   return value;
 }
 function nullablePackageHash(value, field) {
   if (value === null) return null;
-  if (typeof value !== "string" || !/^sha256-v2:[0-9a-f]{64}$/.test(value)) throw validationError(`${field} must be a sha256-v2 package hash or null`);
+  if (typeof value !== "string" || !/^sha256-v2:[0-9a-f]{64}$/.test(value)) throw validationError2(`${field} must be a sha256-v2 package hash or null`);
   return value;
 }
 function capabilities(value) {
   const allowed = /* @__PURE__ */ new Set(["filesystem-read", "filesystem-write", "network", "shell", "secrets"]);
   if (!Array.isArray(value) || !value.every((item) => typeof item === "string" && allowed.has(item))) {
-    throw validationError("capabilities contains an invalid capability");
+    throw validationError2("capabilities contains an invalid capability");
   }
-  if (new Set(value).size !== value.length) throw validationError("capabilities contains a duplicate value");
+  if (new Set(value).size !== value.length) throw validationError2("capabilities contains a duplicate value");
   return [...value];
 }
 function provenance(value) {
-  if (!Array.isArray(value)) throw validationError("provenance must be an array");
+  if (!Array.isArray(value)) throw validationError2("provenance must be an array");
   return value.map((item, index) => {
     const record = strictObject(item, ["artifactId", "revision", "contentHash"]);
     return {
@@ -7260,28 +7367,28 @@ function provenance(value) {
   });
 }
 function files(value) {
-  if (!Array.isArray(value)) throw validationError("files must be an array");
+  if (!Array.isArray(value)) throw validationError2("files must be an array");
   return value.map((item, index) => {
     const record = strictObject(item, ["relativePath", "mode", "content"]);
-    if (record.mode !== 420 && record.mode !== 493) throw validationError(`files[${index}].mode must be 0644 or 0755`);
+    if (record.mode !== 420 && record.mode !== 493) throw validationError2(`files[${index}].mode must be 0644 or 0755`);
     return { relativePath: text2(record.relativePath, `files[${index}].relativePath`), mode: record.mode, content: text2(record.content, `files[${index}].content`) };
   });
 }
 function sequence2(value, field) {
-  if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) throw validationError(`${field} must be a canonical nonnegative decimal sequence`);
+  if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) throw validationError2(`${field} must be a canonical nonnegative decimal sequence`);
   return value;
 }
 function digest2(value, field) {
-  if (typeof value !== "string" || !/^sha256:[0-9a-f]{64}$/.test(value)) throw validationError(`${field} must be a SHA-256 digest`);
+  if (typeof value !== "string" || !/^sha256:[0-9a-f]{64}$/.test(value)) throw validationError2(`${field} must be a SHA-256 digest`);
   return value;
 }
 function semanticVersion(value) {
   if (typeof value !== "string" || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(value)) {
-    throw validationError("version must be a canonical semantic version");
+    throw validationError2("version must be a canonical semantic version");
   }
   return value;
 }
-function validationError(message2) {
+function validationError2(message2) {
   return new BrainMcpError("BRAIN_MCP_VALIDATION_ERROR", message2);
 }
 function retrieveFilters(value) {
@@ -7291,7 +7398,7 @@ function retrieveFilters(value) {
   const sensitivities3 = optionalArray(input.sensitivities, isBrainSensitivity2, "filters.sensitivities");
   const statuses = optionalArray(input.statuses, isKnowledgeStatus2, "filters.statuses");
   if (input.updatedAfter !== void 0 && typeof input.updatedAfter !== "string" || input.updatedBefore !== void 0 && typeof input.updatedBefore !== "string" || input.hasSource !== void 0 && typeof input.hasSource !== "boolean") {
-    throw validationError("brain_retrieve filters have invalid field types");
+    throw validationError2("brain_retrieve filters have invalid field types");
   }
   return {
     ...types === void 0 ? {} : { types },
@@ -7305,24 +7412,17 @@ function retrieveFilters(value) {
 }
 function optionalArray(value, validate, field) {
   if (value === void 0) return void 0;
-  if (!Array.isArray(value) || !value.every(validate)) throw validationError(`${field} has invalid field types`);
+  if (!Array.isArray(value) || !value.every(validate)) throw validationError2(`${field} has invalid field types`);
   return [...new Set(value)];
 }
 function isKnowledgeStatus2(value) {
   return value === "draft" || value === "accepted" || value === "disputed" || value === "superseded";
 }
-function parseSourceInput(value) {
-  try {
-    return parseBrainSourceMetadata(value);
-  } catch {
-    throw validationError("source metadata has invalid field types");
-  }
-}
 function parseDetailsInput(value) {
   try {
     return parseBrainArtifactDetails(value);
   } catch {
-    throw validationError("artifact details have invalid field types");
+    throw validationError2("artifact details have invalid field types");
   }
 }
 
@@ -7592,7 +7692,7 @@ async function runBridgeStdio(options) {
 // src/setup/defaults.ts
 import { readFile as readFile20 } from "node:fs/promises";
 import { homedir as homedir4 } from "node:os";
-import { join as join37 } from "node:path";
+import { join as join36 } from "node:path";
 
 // src/hub/config/constants.ts
 var HUB_CLIENT_STATE_VERSION = 1;
@@ -9974,7 +10074,7 @@ function surfacesFromTailscaleStatus(stdout) {
       externalPort: 8443,
       internalPort: 3e3,
       workspaces: {
-        library: { path: "Library", access: "read-only" },
+        library: { path: "Library", access: "managed-projection" },
         dashboards: { path: "Bases", access: "writable-ui-state" },
         authoring: { path: "Authoring", access: "writable-staging" }
       }
@@ -10144,24 +10244,24 @@ var HostService = class {
 function parseRegistryMcpReleases(value) {
   const input = strictObject3(value, ["limit"]);
   if (input.limit !== void 0 && (typeof input.limit !== "number" || !Number.isInteger(input.limit) || input.limit < 1 || input.limit > 100)) {
-    throw validationError2("skill_releases limit must be an integer from 1 to 100");
+    throw validationError3("skill_releases limit must be an integer from 1 to 100");
   }
   return input.limit === void 0 ? {} : { limit: input.limit };
 }
 function parseRegistryMcpRead(value) {
   const input = strictObject3(value, ["releaseId"]);
   if (typeof input.releaseId !== "string" || input.releaseId.length === 0 || input.releaseId.length > 200 || input.releaseId !== input.releaseId.trim() || input.releaseId.includes("\\0")) {
-    throw validationError2("skill_read releaseId must be canonical text of at most 200 characters");
+    throw validationError3("skill_read releaseId must be canonical text of at most 200 characters");
   }
   return { releaseId: input.releaseId };
 }
 function strictObject3(value, allowedKeys) {
-  if (!isRecord10(value)) throw validationError2("Tool arguments must be an object");
+  if (!isRecord10(value)) throw validationError3("Tool arguments must be an object");
   const unknown = unknownKeys(value, allowedKeys);
-  if (unknown.length > 0) throw validationError2(`Unknown tool arguments: ${unknown.sort().join(", ")}`);
+  if (unknown.length > 0) throw validationError3(`Unknown tool arguments: ${unknown.sort().join(", ")}`);
   return value;
 }
-function validationError2(message2) {
+function validationError3(message2) {
   return new BrainMcpError("BRAIN_MCP_VALIDATION_ERROR", message2);
 }
 
@@ -10717,25 +10817,82 @@ async function listFiles(root4, prefix = "") {
 import { execFile } from "node:child_process";
 import { constants as constants3 } from "node:fs";
 import { access as access5 } from "node:fs/promises";
-import { delimiter as delimiter3, join as join35 } from "node:path";
 import { promisify } from "node:util";
+
+// src/setup/executable-resolution.ts
+import { posix as posix3, win32 } from "node:path";
+var WINDOWS_DEFAULT_EXTENSIONS = [".COM", ".EXE", ".BAT", ".CMD"];
+function defaultExecutableRuntime(platform = process.platform, environment = process.env) {
+  return {
+    platform,
+    pathExt: environment.PATHEXT ?? WINDOWS_DEFAULT_EXTENSIONS.join(";"),
+    commandInterpreter: environment.ComSpec ?? "cmd.exe"
+  };
+}
+function defaultExecutableFallbacks(runtime, environment = process.env) {
+  if (runtime.platform === "darwin") {
+    return { tailscale: ["/Applications/Tailscale.app/Contents/MacOS/Tailscale"] };
+  }
+  if (runtime.platform !== "win32" || !environment.ProgramFiles) return {};
+  return { tailscale: [win32.join(environment.ProgramFiles, "Tailscale", "tailscale.exe")] };
+}
+function executableCandidates(name, searchPath, fallbacks, runtime) {
+  const path = runtime.platform === "win32" ? win32 : posix3;
+  const names = executableNames(name, runtime);
+  const candidates = searchPath.split(path.delimiter).filter(Boolean).flatMap((directory) => names.map((candidate2) => path.join(directory, candidate2)));
+  return uniquePaths([...candidates, ...fallbacks[name] ?? []], runtime.platform);
+}
+function prepareProcessInvocation(executable, args, runtime) {
+  const extension = win32.extname(executable).toLowerCase();
+  if (runtime.platform !== "win32" || extension !== ".cmd" && extension !== ".bat") {
+    return { executable, args };
+  }
+  const command = /\s/u.test(executable) ? `"${executable}"` : executable;
+  return {
+    executable: runtime.commandInterpreter,
+    args: ["/d", "/s", "/c", command, ...args]
+  };
+}
+function executableNames(name, runtime) {
+  if (runtime.platform !== "win32" || win32.extname(name)) return [name];
+  const extensions = runtime.pathExt.split(";").map((extension) => extension.trim()).filter(Boolean).map((extension) => extension.startsWith(".") ? extension : `.${extension}`);
+  return uniqueCaseInsensitive([name, ...extensions.map((extension) => `${name}${extension}`)]);
+}
+function uniqueCaseInsensitive(values) {
+  const seen = /* @__PURE__ */ new Set();
+  return values.filter((value) => {
+    const key = value.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+function uniquePaths(paths, platform) {
+  if (platform !== "win32") return [...new Set(paths)];
+  const seen = /* @__PURE__ */ new Set();
+  return paths.filter((path) => {
+    const key = path.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+// src/setup/process.ts
 var execute = promisify(execFile);
-var platformFallbacks = process.platform === "darwin" ? { tailscale: ["/Applications/Tailscale.app/Contents/MacOS/Tailscale"] } : {};
 var SystemProcessPort = class {
-  constructor(searchPath = process.env.PATH ?? "", fallbacks = platformFallbacks) {
+  constructor(searchPath = process.env.PATH ?? "", fallbacks, runtime = defaultExecutableRuntime()) {
     this.searchPath = searchPath;
-    this.fallbacks = fallbacks;
+    this.runtime = runtime;
+    this.fallbacks = fallbacks ?? defaultExecutableFallbacks(runtime);
   }
   searchPath;
+  runtime;
   fallbacks;
   async findExecutable(name) {
-    const candidates = [
-      ...this.searchPath.split(delimiter3).filter(Boolean).map((directory) => join35(directory, name)),
-      ...this.fallbacks[name] ?? []
-    ];
-    for (const path of candidates) {
+    for (const path of executableCandidates(name, this.searchPath, this.fallbacks, this.runtime)) {
       try {
-        await access5(path, constants3.X_OK);
+        await access5(path, this.runtime.platform === "win32" ? constants3.F_OK : constants3.X_OK);
         return path;
       } catch {
       }
@@ -10743,9 +10900,11 @@ var SystemProcessPort = class {
     return null;
   }
   async run(executable, args, environment, timeoutMs) {
+    const invocation = prepareProcessInvocation(executable, args, this.runtime);
     try {
-      const { stdout, stderr } = await execute(executable, args, {
+      const { stdout, stderr } = await execute(invocation.executable, invocation.args, {
         shell: false,
+        windowsHide: true,
         ...environment ? { env: environment } : {},
         ...timeoutMs === void 0 ? {} : { timeout: timeoutMs }
       });
@@ -10764,7 +10923,7 @@ var SystemProcessPort = class {
 
 // src/setup/state.ts
 import { mkdir as mkdir22, readFile as readFile19 } from "node:fs/promises";
-import { join as join36 } from "node:path";
+import { join as join35 } from "node:path";
 async function readSetupState(root4) {
   try {
     return parseState(JSON.parse(await readFile19(statePath(root4), "utf8")));
@@ -10782,7 +10941,7 @@ function isSetupTargetCurrent(state, target, scope, packageVersion) {
   return state.completed[completionKey(target, scope)]?.packageVersion === packageVersion;
 }
 function statePath(root4) {
-  return join36(root4, "setup.json");
+  return join35(root4, "setup.json");
 }
 function completionKey(target, scope) {
   return `${target}:${scope}`;
@@ -10817,7 +10976,7 @@ function resolveSetupSurfaces(discovery) {
       externalPort: 8443,
       internalPort: 3e3,
       workspaces: {
-        library: { path: "Library", access: "read-only" },
+        library: { path: "Library", access: "managed-projection" },
         dashboards: { path: "Bases", access: "writable-ui-state" },
         authoring: { path: "Authoring", access: "writable-staging" }
       }
@@ -11162,12 +11321,12 @@ async function createSetupService(root4, scope) {
     ),
     new HarnessInstaller(processes, new PortableSkillInstaller()),
     new TerminalConsentPort(),
-    { root: root4, stateRoot: join37(root4, ".skillloom", "hub"), packageRoot, packageVersion },
+    { root: root4, stateRoot: join36(root4, ".skillloom", "hub"), packageRoot, packageVersion },
     new SetupEnvironmentDetector(processes),
     new SetupRolePlanner(guidanceSources),
     new HostService(
       { processes, consent: new TerminalConsentPort() },
-      { packageRoot, hostRoot: join37(root4, ".skillloom", "host"), env: process.env }
+      { packageRoot, hostRoot: join36(root4, ".skillloom", "host"), env: process.env }
     )
   );
 }
@@ -11211,7 +11370,7 @@ async function resolveTrustedRoot() {
   return userRoot;
 }
 async function readPackageVersion(packageRoot) {
-  const value = JSON.parse(await readFile20(join37(packageRoot, "package.json"), "utf8"));
+  const value = JSON.parse(await readFile20(join36(packageRoot, "package.json"), "utf8"));
   if (typeof value !== "object" || value === null || !("version" in value) || typeof value.version !== "string") {
     throw new Error("Skillloom package version is missing");
   }
@@ -11243,11 +11402,11 @@ async function syncCommand(command, service) {
 
 // src/host/defaults.ts
 import { homedir as homedir5 } from "node:os";
-import { join as join38 } from "node:path";
+import { join as join37 } from "node:path";
 function createDefaultHostService() {
   return new HostService(
     { processes: new SystemProcessPort(), consent: new TerminalConsentPort() },
-    { packageRoot: resolvePackageRoot(), hostRoot: join38(homedir5(), ".skillloom", "host"), env: process.env }
+    { packageRoot: resolvePackageRoot(), hostRoot: join37(homedir5(), ".skillloom", "host"), env: process.env }
   );
 }
 
@@ -11260,7 +11419,7 @@ async function hostCommand(command, service) {
 // src/demo/service.ts
 import { mkdir as mkdir24, mkdtemp as mkdtemp3, rm as rm16 } from "node:fs/promises";
 import { tmpdir as tmpdir2 } from "node:os";
-import { join as join42 } from "node:path";
+import { join as join41 } from "node:path";
 import { performance } from "node:perf_hooks";
 
 // src/hub/runtime/auth-context.ts
@@ -11330,27 +11489,27 @@ function requireContext(contexts, actorId) {
 
 // src/demo/checks.ts
 import { access as access6 } from "node:fs/promises";
-import { join as join41 } from "node:path";
+import { join as join40 } from "node:path";
 
 // src/learning/workflow-governance.ts
 import { createHash as createHash15 } from "node:crypto";
 import { rm as rm15 } from "node:fs/promises";
-import { dirname as dirname19, join as join40 } from "node:path";
+import { dirname as dirname19, join as join39 } from "node:path";
 
 // src/learning/workflow-governance-package.ts
 import { cp as cp2, mkdir as mkdir23, readFile as readFile21, writeFile as writeFile4 } from "node:fs/promises";
-import { basename as basename10, join as join39 } from "node:path";
+import { basename as basename10, join as join38 } from "node:path";
 var maxSteps = 8;
 var maxStepLength = 240;
 async function writeWorkflowSkillPackage(root4, operationId, workflow, action, baseSkillPath) {
   const name = action === "patch" && baseSkillPath !== void 0 ? basename10(baseSkillPath) : skillName(workflow.title);
-  const packageRoot = join39(root4, ".skillloom", "staging", `workflow-${safeFragment(operationId)}`, name);
+  const packageRoot = join38(root4, ".skillloom", "staging", `workflow-${safeFragment(operationId)}`, name);
   await mkdir23(packageRoot, { recursive: true });
   if (action === "patch" && baseSkillPath !== void 0) {
     await cp2(baseSkillPath, packageRoot, { recursive: true });
   }
   const content = action === "patch" && baseSkillPath !== void 0 ? await patchedSkillText(baseSkillPath, workflow) : createdSkillText(name, workflow);
-  await writeFile4(join39(packageRoot, "SKILL.md"), content);
+  await writeFile4(join38(packageRoot, "SKILL.md"), content);
   return packageRoot;
 }
 function boundedWorkflowSteps(workflow) {
@@ -11371,7 +11530,7 @@ function createdSkillText(name, workflow) {
   ].join("\n");
 }
 async function patchedSkillText(baseSkillPath, workflow) {
-  const base = await readFile21(join39(baseSkillPath, "SKILL.md"), "utf8");
+  const base = await readFile21(join38(baseSkillPath, "SKILL.md"), "utf8");
   return [
     base.trimEnd(),
     "",
@@ -11425,7 +11584,7 @@ async function governWorkflowUpdate(input) {
   if (input.promote === void 0) {
     return { status: "candidate", workflow, candidate: candidate2 };
   }
-  const validation = await validateSkillPackage(join40(input.projectRoot, ".skillloom", "candidates", candidate2.candidateId, "skill"), {
+  const validation = await validateSkillPackage(join39(input.projectRoot, ".skillloom", "candidates", candidate2.candidateId, "skill"), {
     expectedName: candidate2.metadata.name,
     expectedHash: candidate2.packageHash
   });
@@ -11709,7 +11868,7 @@ async function runDemoChecks(runtime, projectRoot, homeDir) {
     promote: { targets: ["codex"], scope: "project" }
   }));
   assertDemo(promoted.status === "promoted", "Policy mode did not promote the proved workflow");
-  const destination = join41(projectRoot, ".agents", "skills", promoted.candidate.metadata.name, "SKILL.md");
+  const destination = join40(projectRoot, ".agents", "skills", promoted.candidate.metadata.name, "SKILL.md");
   await access6(destination);
   checks.push({
     name: "policy-mode-promotes",
@@ -11742,10 +11901,10 @@ async function exists2(path) {
 // src/demo/service.ts
 async function runDemo(keep) {
   const started = performance.now();
-  const workspace = await mkdtemp3(join42(tmpdir2(), "skillloom-demo-"));
-  const projectRoot = join42(workspace, "project");
-  const homeDir = join42(workspace, "home");
-  const brainRoot = join42(workspace, "brain");
+  const workspace = await mkdtemp3(join41(tmpdir2(), "skillloom-demo-"));
+  const projectRoot = join41(workspace, "project");
+  const homeDir = join41(workspace, "home");
+  const brainRoot = join41(workspace, "brain");
   let runtime = null;
   try {
     await Promise.all([mkdir24(projectRoot), mkdir24(homeDir)]);
@@ -11850,17 +12009,17 @@ function brainBenchmarkCases(targets) {
 // src/benchmarks/workspace.ts
 import { mkdir as mkdir25, mkdtemp as mkdtemp4, readFile as readFile22, readdir as readdir11, rm as rm17, writeFile as writeFile5 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
-import { join as join43, resolve as resolve10 } from "node:path";
+import { join as join42, resolve as resolve10 } from "node:path";
 var markerName = ".skillloom-retrieval-benchmark.json";
 var schemaVersion = 1;
 async function prepareRetrievalBenchmarkWorkspace(input) {
   if (!input.workspace) {
-    const root5 = await mkdtemp4(join43(tmpdir3(), "skillloom-retrieval-benchmark-"));
+    const root5 = await mkdtemp4(join42(tmpdir3(), "skillloom-retrieval-benchmark-"));
     try {
       await initialize(root5, input.records);
       return {
         root: root5,
-        brainRoot: join43(root5, "brain"),
+        brainRoot: join42(root5, "brain"),
         retained: input.keep,
         resumed: false,
         cleanup: input.keep ? async () => void 0 : async () => await rm17(root5, { recursive: true, force: true })
@@ -11884,7 +12043,7 @@ async function prepareRetrievalBenchmarkWorkspace(input) {
   }
   return {
     root: root4,
-    brainRoot: join43(root4, "brain"),
+    brainRoot: join42(root4, "brain"),
     retained: true,
     resumed,
     cleanup: async () => void 0
@@ -11892,19 +12051,19 @@ async function prepareRetrievalBenchmarkWorkspace(input) {
 }
 async function initialize(root4, records) {
   await writeFile5(
-    join43(root4, markerName),
+    join42(root4, markerName),
     `${JSON.stringify({ schemaVersion, records }, null, 2)}
 `,
     { flag: "wx", mode: 384 }
   );
-  await mkdir25(join43(root4, "brain"));
+  await mkdir25(join42(root4, "brain"));
 }
 async function validateMarker(root4, records) {
-  const value = JSON.parse(await readFile22(join43(root4, markerName), "utf8"));
+  const value = JSON.parse(await readFile22(join42(root4, markerName), "utf8"));
   if (typeof value !== "object" || value === null || !("schemaVersion" in value) || value.schemaVersion !== schemaVersion || !("records" in value) || value.records !== records) {
     throw new Error("Benchmark workspace marker does not match this corpus size or schema");
   }
-  await mkdir25(join43(root4, "brain"), { recursive: true });
+  await mkdir25(join42(root4, "brain"), { recursive: true });
 }
 
 // src/benchmarks/brain-retrieval.ts

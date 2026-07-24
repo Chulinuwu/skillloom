@@ -86,8 +86,10 @@ async function validateManifests() {
   invariant(/operates only on the device where the agent process is running/iu.test(readme), "README one-link setup must be current-device only");
   invariant(/Remote Login, SSH, Tailscale SSH, rsync, SSHFS, and remote deployment are not Skillloom prerequisites/iu.test(readme), "README must reject implicit remote deployment prerequisites");
   invariant(/If another device should become the Main Hub[\s\S]*agent running on that device/iu.test(readme), "README must hand off Main Hub setup to the target device");
+  invariant(/Main Hub and Client Nodes may use different operating systems/iu.test(readme), "README must document mixed-OS topology support");
   invariant(/Operate only on the device where the current agent process is running/iu.test(agentInstructions), "AGENTS.md must enforce current-device setup");
   invariant(/Never require or propose Remote Login, SSH, Tailscale SSH, rsync, SSHFS, or remote deployment/iu.test(agentInstructions), "AGENTS.md must reject implicit remote deployment");
+  invariant(/Treat mixed operating systems as a normal topology/iu.test(agentInstructions), "AGENTS.md must prevent OS mismatch handoffs");
   invariant(claudeInstructions.trim() === "@AGENTS.md", "CLAUDE.md must import the canonical repository instructions");
   invariant(readme.includes("## Supported today") && readme.includes("## Measure retrieval on your machine"), "README must disclose support status and retrieval evidence");
   invariant(packageJson.scripts?.demo?.includes("dist/cli/main.js demo"), "package scripts must expose the isolated demo");
@@ -156,6 +158,8 @@ async function validateSkills() {
       invariant(/device where this agent process is running/iu.test(source), `${name} must define setup locality from the agent process`);
       invariant(/Remote Login, SSH, Tailscale SSH, rsync, SSHFS, and remote deployment are not prerequisites/iu.test(source), `${name} must reject implicit remote deployment prerequisites`);
       invariant(/another device to become the Main Hub[\s\S]*agent running on that device/iu.test(source), `${name} must hand off remote-device setup instead of requesting SSH`);
+      invariant(/Treat mixed operating systems as a normal supported topology/iu.test(source), `${name} must attempt mixed-OS setup before discussing compatibility`);
+      invariant(/Do not redirect a native Windows user to WSL/iu.test(source), `${name} must keep native Windows onboarding in the bundled flow`);
       invariant(/detected device plus selected role/iu.test(source), `${name} must announce its device and role before side effects`);
       invariant(/Main Hub/iu.test(source) && /Client Node/iu.test(source) && /This Machine Only/iu.test(source), `${name} must teach the three setup roles`);
       invariant(/dynamic guidance sources/iu.test(source) && /allowlisted official docs or installed CLI help/iu.test(source), `${name} must rely on runtime guidance for external setup steps`);
@@ -176,7 +180,7 @@ async function validateSkills() {
       invariant(/For Main Hub, run the single setup flow/iu.test(source) && /combined consent/iu.test(source), `${name} must teach one-flow Main Hub setup`);
       invariant(!/```sh\n([^`]|`(?!``))*host install/iu.test(source), `${name} must not put host install in the default Main Hub command block`);
       invariant(/host install` only for advanced\/manual recovery/iu.test(source), `${name} must keep host install as advanced or manual recovery only`);
-      invariant(/host identity/iu.test(source) && /HTTPS port 8443/iu.test(source) && /read-only/iu.test(source), `${name} must preserve the private Obsidian boundary`);
+      invariant(/host identity/iu.test(source) && /HTTPS port 8443/iu.test(source) && /writable managed projection/iu.test(source), `${name} must preserve the private Obsidian boundary`);
       invariant(/not from guessed hostnames/iu.test(source), `${name} must report generated setup URLs instead of hardcoding them`);
       invariant(/clickable Obsidian Web UI link/iu.test(source) && /do not require the user to memorize or run CLI commands/iu.test(source), `${name} must teach conversational use after setup`);
       invariant(/current mode/iu.test(source) && /\$skillloom/u.test(source), `${name} must explain the active mode and conversational skill`);
