@@ -1,4 +1,4 @@
-import { open, rename, rm, writeFile } from "node:fs/promises";
+import { open, rename, rm, type FileHandle } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { syncDirectory } from "./durability.js";
@@ -8,18 +8,20 @@ export type AtomicWriteOptions = {
 };
 export async function atomicWriteFile(path: string, data: string | Buffer, options: AtomicWriteOptions = {}): Promise<void> {
   const tmp = join(dirname(path), `.tmp-${process.pid}-${randomUUID()}`);
-  await writeFile(tmp, data, { mode: options.mode });
-  const handle = await open(tmp, "r");
+  let handle: FileHandle | undefined;
+  let renamed = false;
   try {
+    handle = await open(tmp, "wx+", options.mode);
+    await handle.writeFile(data);
     await handle.sync();
-  } finally {
     await handle.close();
-  }
-  try {
+    handle = undefined;
     await rename(tmp, path);
+    renamed = true;
     await syncDirectory(dirname(path));
   } catch (error) {
-    await rm(tmp, { force: true });
+    await handle?.close().catch(() => undefined);
+    if (!renamed) await rm(tmp, { force: true }).catch(() => undefined);
     throw error;
   }
 }

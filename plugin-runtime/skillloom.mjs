@@ -707,7 +707,7 @@ function storeLayout(projectRoot) {
 }
 
 // src/files/atomic-write.ts
-import { open as open2, rename, rm, writeFile } from "node:fs/promises";
+import { open as open2, rename, rm } from "node:fs/promises";
 import { dirname, join as join2 } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -734,18 +734,20 @@ async function syncDirectory(path) {
 // src/files/atomic-write.ts
 async function atomicWriteFile(path, data, options = {}) {
   const tmp = join2(dirname(path), `.tmp-${process.pid}-${randomUUID()}`);
-  await writeFile(tmp, data, { mode: options.mode });
-  const handle = await open2(tmp, "r");
+  let handle;
+  let renamed = false;
   try {
+    handle = await open2(tmp, "wx+", options.mode);
+    await handle.writeFile(data);
     await handle.sync();
-  } finally {
     await handle.close();
-  }
-  try {
+    handle = void 0;
     await rename(tmp, path);
+    renamed = true;
     await syncDirectory(dirname(path));
   } catch (error) {
-    await rm(tmp, { force: true });
+    await handle?.close().catch(() => void 0);
+    if (!renamed) await rm(tmp, { force: true }).catch(() => void 0);
     throw error;
   }
 }
@@ -8406,7 +8408,7 @@ async function negotiateHub(client, clientVersion) {
 
 // src/hub/client/release-materialize.ts
 import { createHash as createHash11, randomUUID as randomUUID8 } from "node:crypto";
-import { chmod as chmod4, mkdir as mkdir18, mkdtemp as mkdtemp2, rm as rm13, writeFile as writeFile3 } from "node:fs/promises";
+import { chmod as chmod4, mkdir as mkdir18, mkdtemp as mkdtemp2, rm as rm13, writeFile as writeFile2 } from "node:fs/promises";
 import { dirname as dirname16, join as join30 } from "node:path";
 
 // src/hub/registry/errors.ts
@@ -8512,7 +8514,7 @@ function validateUnicode(value) {
 }
 
 // src/hub/registry/package-blob.ts
-import { chmod as chmod3, mkdir as mkdir17, mkdtemp, rm as rm12, writeFile as writeFile2 } from "node:fs/promises";
+import { chmod as chmod3, mkdir as mkdir17, mkdtemp, rm as rm12, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname as dirname15, join as join29, posix as posix2 } from "node:path";
 function parsePackageBlob(value) {
@@ -8544,7 +8546,7 @@ async function hashPackageBlob(value) {
       const absolutePath = join29(root4, ...file2.relativePath.split("/"));
       const content = decodeBase64(file2.contentBase64, file2.relativePath);
       await mkdir17(dirname15(absolutePath), { recursive: true });
-      await writeFile2(absolutePath, content, { flag: "wx" });
+      await writeFile(absolutePath, content, { flag: "wx" });
       await chmod3(absolutePath, file2.mode);
       files2.push({ relativePath: file2.relativePath, absolutePath, size: content.byteLength, mode: file2.mode });
     }
@@ -9103,7 +9105,7 @@ async function writePackageBlob(root4, value) {
   for (const file2 of blob.files) {
     const path = join30(root4, ...file2.relativePath.split("/"));
     await mkdir18(dirname16(path), { recursive: true });
-    await writeFile3(path, Buffer.from(file2.contentBase64, "base64"), { flag: "wx" });
+    await writeFile2(path, Buffer.from(file2.contentBase64, "base64"), { flag: "wx" });
     await chmod4(path, file2.mode);
   }
 }
@@ -11497,7 +11499,7 @@ import { rm as rm15 } from "node:fs/promises";
 import { dirname as dirname19, join as join39 } from "node:path";
 
 // src/learning/workflow-governance-package.ts
-import { cp as cp2, mkdir as mkdir23, readFile as readFile21, writeFile as writeFile4 } from "node:fs/promises";
+import { cp as cp2, mkdir as mkdir23, readFile as readFile21, writeFile as writeFile3 } from "node:fs/promises";
 import { basename as basename10, join as join38 } from "node:path";
 var maxSteps = 8;
 var maxStepLength = 240;
@@ -11509,7 +11511,7 @@ async function writeWorkflowSkillPackage(root4, operationId, workflow, action, b
     await cp2(baseSkillPath, packageRoot, { recursive: true });
   }
   const content = action === "patch" && baseSkillPath !== void 0 ? await patchedSkillText(baseSkillPath, workflow) : createdSkillText(name, workflow);
-  await writeFile4(join38(packageRoot, "SKILL.md"), content);
+  await writeFile3(join38(packageRoot, "SKILL.md"), content);
   return packageRoot;
 }
 function boundedWorkflowSteps(workflow) {
@@ -12007,7 +12009,7 @@ function brainBenchmarkCases(targets) {
 }
 
 // src/benchmarks/workspace.ts
-import { mkdir as mkdir25, mkdtemp as mkdtemp4, readFile as readFile22, readdir as readdir11, rm as rm17, writeFile as writeFile5 } from "node:fs/promises";
+import { mkdir as mkdir25, mkdtemp as mkdtemp4, readFile as readFile22, readdir as readdir11, rm as rm17, writeFile as writeFile4 } from "node:fs/promises";
 import { tmpdir as tmpdir3 } from "node:os";
 import { join as join42, resolve as resolve10 } from "node:path";
 var markerName = ".skillloom-retrieval-benchmark.json";
@@ -12050,7 +12052,7 @@ async function prepareRetrievalBenchmarkWorkspace(input) {
   };
 }
 async function initialize(root4, records) {
-  await writeFile5(
+  await writeFile4(
     join42(root4, markerName),
     `${JSON.stringify({ schemaVersion, records }, null, 2)}
 `,
