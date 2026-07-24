@@ -26,7 +26,7 @@ export type BrainMcpInputSchema = {
   type: "object";
   properties: Readonly<Record<string, unknown>>;
   required?: readonly string[];
-  additionalProperties: false;
+  additionalProperties: boolean;
 };
 
 export type BrainMcpToolDefinition = {

@@ -18,7 +18,7 @@ function authorization(role: "reader" | "contributor" = "contributor"): HubAutho
     .authorize({ actorId, kind: "user", appCapabilities: [] });
 }
 
-test("publishes strict brain and registry tool definitions", () => {
+test("publishes flexible Brain capture and strict control-plane tool definitions", () => {
   const tools = listBrainMcpTools();
   assert.deepEqual(tools.map((tool) => tool.name), [
     "brain_search",
@@ -33,7 +33,7 @@ test("publishes strict brain and registry tool definitions", () => {
     "skill_propose",
     "skill_publish"
   ]);
-  assert.ok(tools.every((tool) => tool.inputSchema.additionalProperties === false));
+  assert.ok(tools.filter((tool) => tool.name !== "brain_capture").every((tool) => tool.inputSchema.additionalProperties === false));
   for (const name of ["brain_search", "brain_read", "brain_capture", "brain_update", "brain_link"]) {
     assert.equal(tools.filter((tool) => tool.name === name).length, 1);
   }
@@ -47,7 +47,7 @@ test("publishes strict brain and registry tool definitions", () => {
   });
   assert.ok((retrieve?.inputSchema.properties.filters as { properties: { statuses: unknown; hasSource: unknown } }).properties.statuses);
   assert.ok((retrieve?.inputSchema.properties.filters as { properties: { statuses: unknown; hasSource: unknown } }).properties.hasSource);
-  assert.ok(((tools.find((tool) => tool.name === "brain_capture")?.inputSchema.properties.type as { enum: string[] }).enum).includes("bounded-episode"));
+  assert.deepEqual(tools.find((tool) => tool.name === "brain_capture")?.inputSchema.properties.type, { type: "string" });
   const captureProperties = tools.find((tool) => tool.name === "brain_capture")?.inputSchema.properties ?? {};
   const updateProperties = tools.find((tool) => tool.name === "brain_update")?.inputSchema.properties ?? {};
   assert.ok(captureProperties.layer);
@@ -55,8 +55,9 @@ test("publishes strict brain and registry tool definitions", () => {
   assert.ok(captureProperties.details);
   assert.ok(updateProperties.layer);
   assert.ok(updateProperties.details);
-  assert.equal((captureProperties.source as { additionalProperties: boolean }).additionalProperties, false);
-  assert.ok((captureProperties.details as { anyOf: unknown[] }).anyOf.length > 0);
+  assert.equal(tools.find((tool) => tool.name === "brain_capture")?.inputSchema.additionalProperties, true);
+  assert.deepEqual(captureProperties.source, {});
+  assert.deepEqual(captureProperties.details, {});
   assert.ok((updateProperties.details as { anyOf: unknown[] }).anyOf.length > 0);
   assert.deepEqual(read?.inputSchema.required, ["releaseId"]);
   assert.deepEqual(propose?.inputSchema.required, ["requestId", "name", "baseReleaseHash", "capabilities", "provenance", "files"]);
@@ -77,7 +78,7 @@ test("publishes the canonical brain artifact vocabulary in MCP schemas", () => {
   };
   assert.deepEqual(filters.properties.types.items.enum, brainArtifactTypes);
   assert.deepEqual(filters.properties.layers.items.enum, brainArtifactLayers);
-  assert.deepEqual((capture?.inputSchema.properties.type as { enum: readonly string[] }).enum, brainArtifactTypes);
+  assert.deepEqual(capture?.inputSchema.properties.type, { type: "string" });
   assert.deepEqual((update?.inputSchema.properties.type as { enum: readonly string[] }).enum, brainArtifactTypes);
 });
 
@@ -134,7 +135,7 @@ test("dispatches MCP brain tools with equivalent structured results", async () =
     await brain.close();
   }
 });
-test("rejects malformed structured brain capture and update fields before dispatch", async () => {
+test("normalizes generative Brain captures while preserving the observed payload", async () => {
   const brain = await createBrainService({ root: await tempDir("skillloom-mcp-structured-validation-"), permissions: new AllowingPermissions() });
   const dispatch = createBrainMcpDispatcher(brain);
   const auth = authorization();
@@ -149,8 +150,27 @@ test("rejects malformed structured brain capture and update fields before dispat
       source: { sourceId: "x", capturedAt: "not-a-date", contentHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
       sensitivity: "private"
     } }, auth);
-    assert.equal(malformedSource.isError, true);
-    assert.equal((malformedSource.structuredContent as { error: { code: string } }).error.code, "BRAIN_MCP_VALIDATION_ERROR");
+    assert.equal(malformedSource.isError, undefined);
+    const normalizedSource = (malformedSource.structuredContent as {
+      artifact: {
+        type: string;
+        source?: unknown;
+        provenance: {
+          skillloomCapture: {
+            normalizedFields: string[];
+            observed: { source: unknown };
+          };
+        };
+      };
+    }).artifact;
+    assert.equal(normalizedSource.type, "note");
+    assert.equal(normalizedSource.source, undefined);
+    assert.deepEqual(normalizedSource.provenance.skillloomCapture.normalizedFields, ["layer", "source", "type"]);
+    assert.deepEqual(normalizedSource.provenance.skillloomCapture.observed.source, {
+      sourceId: "x",
+      capturedAt: "not-a-date",
+      contentHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    });
     const malformedDetails = await dispatch({ name: "brain_update", arguments: {
       requestId: randomUUID(),
       artifactId: randomUUID(),
@@ -168,8 +188,72 @@ test("rejects malformed structured brain capture and update fields before dispat
       detailsExtra: { kind: "none" },
       sensitivity: "private"
     } }, auth);
-    assert.equal(unknownStructuredField.isError, true);
-    assert.equal((unknownStructuredField.structuredContent as { error: { code: string } }).error.code, "BRAIN_MCP_VALIDATION_ERROR");
+    assert.equal(unknownStructuredField.isError, undefined);
+    const normalizedUnknown = (unknownStructuredField.structuredContent as {
+      artifact: {
+        provenance: {
+          skillloomCapture: {
+            observed: { unmapped: Record<string, unknown> };
+          };
+        };
+      };
+    }).artifact;
+    assert.deepEqual(normalizedUnknown.provenance.skillloomCapture.observed.unmapped, {
+      detailsExtra: { kind: "none" }
+    });
+  } finally {
+    await brain.close();
+  }
+});
+test("accepts the loose capture shape emitted by Claude without discarding metadata", async () => {
+  const brain = await createBrainService({ root: await tempDir("skillloom-mcp-loose-capture-"), permissions: new AllowingPermissions() });
+  const dispatch = createBrainMcpDispatcher(brain);
+  try {
+    const result = await dispatch({ name: "brain_capture", arguments: {
+      requestId: randomUUID(),
+      type: "note",
+      layer: "human-knowledge",
+      title: "Claude cookbooks",
+      content: "Five reusable cookbook findings.",
+      provenance: { agent: "claude" },
+      source: "https://github.com/anthropics/claude-cookbooks",
+      details: { kind: "knowledge", concepts: ["agents", "cookbooks"] },
+      tags: ["anthropic", "cookbooks"]
+    } }, authorization());
+    assert.equal(result.isError, undefined);
+    const artifact = (result.structuredContent as {
+      artifact: {
+        type: string;
+        layer: string;
+        details: { kind: string };
+        sensitivity: string;
+        provenance: {
+          agent: string;
+          skillloomCapture: {
+            normalizedFields: string[];
+            observed: {
+              source: string;
+              details: Record<string, unknown>;
+              unmapped: Record<string, unknown>;
+            };
+          };
+        };
+      };
+    }).artifact;
+    assert.equal(artifact.type, "note");
+    assert.equal(artifact.layer, "human-knowledge");
+    assert.deepEqual(artifact.details, { kind: "none" });
+    assert.equal(artifact.sensitivity, "private");
+    assert.equal(artifact.provenance.agent, "claude");
+    assert.deepEqual(artifact.provenance.skillloomCapture.normalizedFields, ["details", "sensitivity", "source"]);
+    assert.equal(artifact.provenance.skillloomCapture.observed.source, "https://github.com/anthropics/claude-cookbooks");
+    assert.deepEqual(artifact.provenance.skillloomCapture.observed.details, {
+      kind: "knowledge",
+      concepts: ["agents", "cookbooks"]
+    });
+    assert.deepEqual(artifact.provenance.skillloomCapture.observed.unmapped, {
+      tags: ["anthropic", "cookbooks"]
+    });
   } finally {
     await brain.close();
   }

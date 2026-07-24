@@ -1,11 +1,12 @@
 import { isBrainArtifactLayer, isBrainArtifactType, isBrainSensitivity, isCanonicalUuid, isJsonRecord, isRecord, unknownKeys } from "../adapter-schema.js";
-import { parseBrainArtifactDetails, parseBrainSourceMetadata } from "../brain/artifact-details.js";
+import { parseBrainArtifactDetails } from "../brain/artifact-details.js";
 import type { CaptureBrainInput, LinkBrainInput, RetrieveBrainInput, SearchBrainInput, UpdateBrainInput } from "../brain/index.js";
 import type { SkillCapability } from "../../domain/types.js";
 import type { WorkflowProofDecision } from "../../policy/workflow-proof.js";
 import { parseWorkflowProofDecision } from "../../policy/workflow-proof-schema.js";
 import type { RegistryProvenanceReference } from "../registry/index.js";
 import { BrainMcpError } from "./errors.js";
+import { normalizeBrainMcpCapture } from "./capture-normalization.js";
 
 export type BrainMcpCaptureInput = Omit<CaptureBrainInput, "actor">;
 export type BrainMcpUpdateInput = Omit<UpdateBrainInput, "actor">;
@@ -63,27 +64,7 @@ export function parseBrainMcpRead(value: unknown): { artifactId: string } {
 }
 
 export function parseBrainMcpCapture(value: unknown): BrainMcpCaptureInput {
-  const input = strictObject(value, ["requestId", "type", "layer", "title", "content", "frontmatter", "provenance", "source", "details", "sensitivity"]);
-  if (!isBrainArtifactType(input.type) || typeof input.title !== "string" || typeof input.content !== "string"
-    || !isJsonRecord(input.provenance) || !isBrainSensitivity(input.sensitivity)
-    || (input.layer !== undefined && !isBrainArtifactLayer(input.layer))
-    || (input.source !== undefined && !isJsonRecord(input.source))
-    || (input.details !== undefined && !isJsonRecord(input.details))
-    || (input.frontmatter !== undefined && !isJsonRecord(input.frontmatter))) {
-    throw validationError("brain_capture arguments have invalid field types");
-  }
-  return {
-    requestId: uuid(input.requestId, "requestId"),
-    type: input.type,
-    ...(input.layer === undefined ? {} : { layer: input.layer }),
-    title: input.title,
-    content: input.content,
-    ...(input.frontmatter === undefined ? {} : { frontmatter: input.frontmatter }),
-    provenance: input.provenance,
-    ...(input.source === undefined ? {} : { source: parseSourceInput(input.source) }),
-    ...(input.details === undefined ? {} : { details: parseDetailsInput(input.details) }),
-    sensitivity: input.sensitivity
-  };
+  return normalizeBrainMcpCapture(value);
 }
 
 export function parseBrainMcpUpdate(value: unknown): BrainMcpUpdateInput {
@@ -243,14 +224,6 @@ function optionalArray<T>(value: unknown, validate: (item: unknown) => item is T
 }
 function isKnowledgeStatus(value: unknown): value is "draft" | "accepted" | "disputed" | "superseded" {
   return value === "draft" || value === "accepted" || value === "disputed" || value === "superseded";
-}
-
-function parseSourceInput(value: unknown) {
-  try {
-    return parseBrainSourceMetadata(value);
-  } catch {
-    throw validationError("source metadata has invalid field types");
-  }
 }
 
 function parseDetailsInput(value: unknown) {

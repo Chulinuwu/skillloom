@@ -7,21 +7,7 @@ const artifactType = { type: "string", enum: brainArtifactTypes };
 const artifactLayer = { type: "string", enum: brainArtifactLayers };
 const sensitivity = { type: "string", enum: ["private", "tailnet", "restricted"] };
 const jsonObject = { type: "object" };
-const sourceMetadata = {
-  type: "object",
-  properties: {
-    sourceId: { type: "string", minLength: 1 },
-    capturedAt: { type: "string" },
-    contentHash: { type: "string", pattern: "^sha256:[0-9a-f]{64}$" },
-    uri: { type: "string", minLength: 1 },
-    title: { type: "string", minLength: 1 },
-    mediaType: { type: "string", minLength: 1 },
-    fetchedAt: { type: "string" },
-    retrievedBy: { type: "string", minLength: 1 }
-  },
-  required: ["sourceId", "capturedAt", "contentHash"],
-  additionalProperties: false
-};
+const semanticValue = {};
 const artifactDetails = {
   anyOf: [
     { type: "object", properties: { kind: { type: "string", enum: ["none"] } }, required: ["kind"], additionalProperties: false },
@@ -204,23 +190,23 @@ const definitions: readonly BrainMcpToolDefinition[] = [
   },
   {
     name: "brain_capture",
-    description: "Capture a new second-brain artifact with an idempotent request ID.",
+    description: "Capture a new second-brain artifact. Semantic metadata is normalized without data loss and reported in provenance.skillloomCapture; server-owned identity fields remain forbidden.",
     inputSchema: {
       type: "object",
       properties: {
         requestId,
-        type: artifactType,
+        type: { type: "string" },
         title: { type: "string", minLength: 1, maxLength: 500 },
         content: { type: "string", maxLength: 2_000_000 },
         frontmatter: jsonObject,
         provenance: jsonObject,
-        layer: artifactLayer,
-        source: sourceMetadata,
-        details: artifactDetails,
-        sensitivity
+        layer: { type: "string" },
+        source: semanticValue,
+        details: semanticValue,
+        sensitivity: { type: "string" }
       },
-      required: ["requestId", "type", "title", "content", "provenance", "sensitivity"],
-      additionalProperties: false
+      required: ["requestId", "title", "content"],
+      additionalProperties: true
     }
   },
   {
