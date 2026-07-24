@@ -38,3 +38,45 @@ jobs:
           npm install --global --prefix "$install_root" "./$package_file"
           cd "$run_root"
           "$install_root/bin/skillloom" status --json
+  setup-platforms:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: node --test --import tsx test/setup/*.test.ts
+      - run: npm run build
+      - run: npm run validate:plugin
+      - name: Verify packed global install
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          npm pack --json > pack.json
+          package_file="$(node -e "const fs=require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync('pack.json','utf8'))[0].filename)")"
+          install_root="$(mktemp -d)"
+          run_root="$(mktemp -d)"
+          npm install --global --prefix "$install_root" "./$package_file"
+          cd "$run_root"
+          "$install_root/bin/skillloom" status --json
+      - name: Verify packed global install on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          npm pack --json | Out-File -Encoding utf8 pack.json
+          $packageFile = node -e "const fs=require('node:fs'); process.stdout.write(JSON.parse(fs.readFileSync('pack.json','utf8'))[0].filename)"
+          $installRoot = Join-Path $env:RUNNER_TEMP "skillloom-install"
+          $runRoot = Join-Path $env:RUNNER_TEMP "skillloom-run"
+          New-Item -ItemType Directory -Force $installRoot, $runRoot | Out-Null
+          npm install --global --prefix $installRoot ".\$packageFile"
+          Push-Location $runRoot
+          & "$installRoot\skillloom.cmd" status --json
+          Pop-Location

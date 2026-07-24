@@ -1,30 +1,36 @@
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
-import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
+import {
+  defaultExecutableFallbacks,
+  defaultExecutableRuntime,
+  executableCandidates,
+  prepareProcessInvocation,
+  type ExecutableFallbacks,
+  type ExecutableRuntime
+} from "./executable-resolution.js";
 import type { ProcessPort } from "./types.js";
 
 const execute = promisify(execFile);
-type ExecutableFallbacks = Readonly<Partial<Record<string, readonly string[]>>>;
-const platformFallbacks: ExecutableFallbacks = process.platform === "darwin"
-  ? { tailscale: ["/Applications/Tailscale.app/Contents/MacOS/Tailscale"] }
-  : {};
 
 export class SystemProcessPort implements ProcessPort {
+  private readonly runtime: ExecutableRuntime;
+  private readonly fallbacks: ExecutableFallbacks;
+
   constructor(
     private readonly searchPath = process.env.PATH ?? "",
-    private readonly fallbacks: ExecutableFallbacks = platformFallbacks
-  ) {}
+    fallbacks?: ExecutableFallbacks,
+    runtime: ExecutableRuntime = defaultExecutableRuntime()
+  ) {
+    this.runtime = runtime;
+    this.fallbacks = fallbacks ?? defaultExecutableFallbacks(runtime);
+  }
 
   async findExecutable(name: string): Promise<string | null> {
-    const candidates = [
-      ...this.searchPath.split(delimiter).filter(Boolean).map((directory) => join(directory, name)),
-      ...this.fallbacks[name] ?? []
-    ];
-    for (const path of candidates) {
+    for (const path of executableCandidates(name, this.searchPath, this.fallbacks, this.runtime)) {
       try {
-        await access(path, constants.X_OK);
+        await access(path, this.runtime.platform === "win32" ? constants.F_OK : constants.X_OK);
         return path;
       } catch {
       }
@@ -33,9 +39,11 @@ export class SystemProcessPort implements ProcessPort {
   }
 
   async run(executable: string, args: string[], environment?: NodeJS.ProcessEnv, timeoutMs?: number) {
+    const invocation = prepareProcessInvocation(executable, args, this.runtime);
     try {
-      const { stdout, stderr } = await execute(executable, args, {
+      const { stdout, stderr } = await execute(invocation.executable, invocation.args, {
         shell: false,
+        windowsHide: true,
         ...(environment ? { env: environment } : {}),
         ...(timeoutMs === undefined ? {} : { timeout: timeoutMs })
       });
