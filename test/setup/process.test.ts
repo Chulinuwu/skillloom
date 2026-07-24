@@ -41,7 +41,13 @@ test("Windows command shims run through cmd.exe while native executables remain 
     prepareProcessInvocation("C:\\Agent Bin\\claude.cmd", ["plugin", "list", "--json"], windowsRuntime),
     {
       executable: windowsRuntime.commandInterpreter,
-      args: ["/d", "/s", "/c", "\"C:\\Agent Bin\\claude.cmd\"", "plugin", "list", "--json"]
+      args: [
+        "/d",
+        "/s",
+        "/c",
+        "\"C:\\Agent^ Bin\\claude.cmd ^\"plugin^\" ^\"list^\" ^\"--json^\"\""
+      ],
+      windowsVerbatimArguments: true
     }
   );
   assert.deepEqual(
@@ -59,16 +65,16 @@ test("native Windows setup discovers and runs a command shim with spaced argumen
   const root = await mkdtemp(join(tmpdir(), "skillloom command shim "));
   const executable = join(root, "skillloom-test.cmd");
   try {
-    await writeFile(executable, "@echo off\r\n<nul set /p =%~1\r\n");
+    await writeFile(executable, "@echo off\r\n<nul set /p \"=%~1\"\r\n");
     const processes = new SystemProcessPort(root, {}, {
       platform: "win32",
       pathExt: ".CMD",
       commandInterpreter: process.env.ComSpec ?? "cmd.exe"
     });
     assert.equal((await processes.findExecutable("skillloom-test"))?.toLowerCase(), executable.toLowerCase());
-    assert.deepEqual(await processes.run(executable, ["value with spaces"]), {
+    assert.deepEqual(await processes.run(executable, ["value with spaces & symbols"]), {
       exitCode: 0,
-      stdout: "value with spaces",
+      stdout: "value with spaces & symbols",
       stderr: ""
     });
   } finally {

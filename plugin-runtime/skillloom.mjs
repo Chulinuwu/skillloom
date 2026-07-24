@@ -10824,6 +10824,8 @@ import { promisify } from "node:util";
 // src/setup/executable-resolution.ts
 import { posix as posix3, win32 } from "node:path";
 var WINDOWS_DEFAULT_EXTENSIONS = [".COM", ".EXE", ".BAT", ".CMD"];
+var WINDOWS_META_CHARACTERS = /([()\][%!^"`<>&|;, *?])/gu;
+var WINDOWS_NODE_MODULES_SHIM = /node_modules[\\/]\.bin[\\/][^\\/]+\.cmd$/iu;
 function defaultExecutableRuntime(platform = process.platform, environment = process.env) {
   return {
     platform,
@@ -10849,11 +10851,26 @@ function prepareProcessInvocation(executable, args, runtime) {
   if (runtime.platform !== "win32" || extension !== ".cmd" && extension !== ".bat") {
     return { executable, args };
   }
-  const command = /\s/u.test(executable) ? `"${executable}"` : executable;
+  const command = escapeWindowsCommand(win32.normalize(executable));
+  const doubleEscapeMetaCharacters = WINDOWS_NODE_MODULES_SHIM.test(executable);
+  const shellCommand = [
+    command,
+    ...args.map((argument) => escapeWindowsArgument(argument, doubleEscapeMetaCharacters))
+  ].join(" ");
   return {
     executable: runtime.commandInterpreter,
-    args: ["/d", "/s", "/c", command, ...args]
+    args: ["/d", "/s", "/c", `"${shellCommand}"`],
+    windowsVerbatimArguments: true
   };
+}
+function escapeWindowsCommand(command) {
+  return command.replace(WINDOWS_META_CHARACTERS, "^$1");
+}
+function escapeWindowsArgument(argument, doubleEscapeMetaCharacters) {
+  let escaped = argument.replace(/(?=(\\+?)?)\1"/gu, '$1$1\\"');
+  escaped = escaped.replace(/(?=(\\+?)?)\1$/gu, "$1$1");
+  escaped = `"${escaped}"`.replace(WINDOWS_META_CHARACTERS, "^$1");
+  return doubleEscapeMetaCharacters ? escaped.replace(WINDOWS_META_CHARACTERS, "^$1") : escaped;
 }
 function executableNames(name, runtime) {
   if (runtime.platform !== "win32" || win32.extname(name)) return [name];
@@ -10907,6 +10924,7 @@ var SystemProcessPort = class {
       const { stdout, stderr } = await execute(invocation.executable, invocation.args, {
         shell: false,
         windowsHide: true,
+        ...invocation.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {},
         ...environment ? { env: environment } : {},
         ...timeoutMs === void 0 ? {} : { timeout: timeoutMs }
       });

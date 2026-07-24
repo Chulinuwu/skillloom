@@ -11,9 +11,12 @@ export type ExecutableRuntime = {
 export type ProcessInvocation = {
   executable: string;
   args: string[];
+  windowsVerbatimArguments?: boolean;
 };
 
 const WINDOWS_DEFAULT_EXTENSIONS = [".COM", ".EXE", ".BAT", ".CMD"];
+const WINDOWS_META_CHARACTERS = /([()\][%!^"`<>&|;, *?])/gu;
+const WINDOWS_NODE_MODULES_SHIM = /node_modules[\\/]\.bin[\\/][^\\/]+\.cmd$/iu;
 
 export function defaultExecutableRuntime(
   platform: NodeJS.Platform = process.platform,
@@ -61,11 +64,30 @@ export function prepareProcessInvocation(
   if (runtime.platform !== "win32" || (extension !== ".cmd" && extension !== ".bat")) {
     return { executable, args };
   }
-  const command = /\s/u.test(executable) ? `"${executable}"` : executable;
+  const command = escapeWindowsCommand(win32.normalize(executable));
+  const doubleEscapeMetaCharacters = WINDOWS_NODE_MODULES_SHIM.test(executable);
+  const shellCommand = [
+    command,
+    ...args.map((argument) => escapeWindowsArgument(argument, doubleEscapeMetaCharacters))
+  ].join(" ");
   return {
     executable: runtime.commandInterpreter,
-    args: ["/d", "/s", "/c", command, ...args]
+    args: ["/d", "/s", "/c", `"${shellCommand}"`],
+    windowsVerbatimArguments: true
   };
+}
+
+function escapeWindowsCommand(command: string): string {
+  return command.replace(WINDOWS_META_CHARACTERS, "^$1");
+}
+
+function escapeWindowsArgument(argument: string, doubleEscapeMetaCharacters: boolean): string {
+  let escaped = argument.replace(/(?=(\\+?)?)\1"/gu, "$1$1\\\"");
+  escaped = escaped.replace(/(?=(\\+?)?)\1$/gu, "$1$1");
+  escaped = `"${escaped}"`.replace(WINDOWS_META_CHARACTERS, "^$1");
+  return doubleEscapeMetaCharacters
+    ? escaped.replace(WINDOWS_META_CHARACTERS, "^$1")
+    : escaped;
 }
 
 function executableNames(name: string, runtime: ExecutableRuntime): string[] {

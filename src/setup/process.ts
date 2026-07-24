@@ -44,6 +44,7 @@ export class SystemProcessPort implements ProcessPort {
       const { stdout, stderr } = await execute(invocation.executable, invocation.args, {
         shell: false,
         windowsHide: true,
+        ...(invocation.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
         ...(environment ? { env: environment } : {}),
         ...(timeoutMs === undefined ? {} : { timeout: timeoutMs })
       });
