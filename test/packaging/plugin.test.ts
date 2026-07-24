@@ -92,6 +92,8 @@ test("npm package contains the CLI and all portable skills", async () => {
     "skills/setup-skillloom/SKILL.md",
     "skills/setup-skillloom/agents/openai.yaml",
     "skills/setup-skillloom/scripts/skillloom.mjs",
+    "AGENTS.md",
+    "CLAUDE.md",
     "README.md",
     "LICENSE"
   ]) {

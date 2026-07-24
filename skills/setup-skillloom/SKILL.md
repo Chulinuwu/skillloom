@@ -1,6 +1,6 @@
 ---
 name: setup-skillloom
-description: Install or connect Skillloom from the plugin, including the private Docker Hub, governed Obsidian Web UI, private host Tailscale Serve, local agent integrations, and exact URLs and ports. Use when a user installs Skillloom, pastes a Skillloom Hub URL, adds another tailnet device, asks to host the second brain, or asks how to open Obsidian.
+description: Install or connect Skillloom on the current device from the plugin, including the private Docker Hub, governed Obsidian Web UI, private host Tailscale Serve, local agent integrations, and exact URLs and ports. Use when a user installs Skillloom, pastes a Skillloom Hub URL, adds another tailnet device, asks to host the second brain, asks to configure another device, or asks how to open Obsidian.
 ---
 
 # Setup Skillloom
@@ -8,9 +8,15 @@ description: Install or connect Skillloom from the plugin, including the private
 Use the bundled runner at `scripts/skillloom.mjs`. Resolve it relative to this skill directory, not from a global `skillloom` command.
 Respond in the language of the user's latest message. Preserve product names, generated paths, URLs, and exact UI labels from current official sources.
 
+Define `this machine` as the device where this agent process is running. Run every setup command and side effect only on that device. Remote Login, SSH, Tailscale SSH, rsync, SSHFS, and remote deployment are not prerequisites for normal Skillloom setup and must not be proposed as fallback requirements.
+
+If the user wants another device to become the Main Hub, do not inspect it, ask for Remote Login, or remotely deploy it. Give the user the repository link and one localized sentence to send to an agent running on that device: ask that agent to make its current device the Main Hub. Explain that the current device can join as a Client Node only after the Hub exists. Treat remote administration as an advanced workflow outside this skill unless the user explicitly requests it and separately authorizes access to the exact target.
+
+Before setup side effects, identify the current device from local system information and state the detected device plus selected role. If the role is not already implied, ask the single role question using device-bound choices: host the Brain on this device, connect this device to an existing Hub, or keep this device standalone.
+
 At the start of every onboarding invocation, refresh the mutable setup guidance from the internet. Search for and open the current official documentation for the detected Tailscale, Docker, Claude Code, or Codex step even when onboarding ran recently. Never reuse instructions from memory, an earlier chat, cached snippets, this repository's README, or a previously fetched page as current UI guidance. Prefer official vendor sources and state which source was checked. If an agent web-search tool is unavailable, rely on the setup runner's fresh allowlisted official-page fetch; use installed CLI help only when that live fetch fails. Do not give UI-specific instructions until one of those current sources is available.
 
-Ask at most one role question before setup side effects: is this machine the Main Hub, a Client Node, or This Machine Only? If the user pasted a credential-free HTTPS Hub URL, that already implies Client Node. If they explicitly asked for local-only, that implies This Machine Only.
+Ask at most one role question before setup side effects. If the user pasted a credential-free HTTPS Hub URL, that already implies Client Node. If they explicitly asked for local-only, that implies This Machine Only.
 
 Never ask the user to paste a Tailscale auth key into chat. Do not teach a default auth-key, sidecar, or Tailscale Service setup. The normal Main Hub path uses the host's authenticated Tailscale client, Docker bound to loopback ports, and private Tailscale Serve on the host identity. Auth keys and `svc:*` Services are advanced headless/team variants only when the user explicitly asks for them.
 

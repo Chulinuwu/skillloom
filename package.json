@@ -51,6 +51,8 @@
     "mode-profile.mjs",
     "plugin-runtime",
     "skills",
+    "AGENTS.md",
+    "CLAUDE.md",
     "README.md",
     "LICENSE"
   ],

@@ -16,21 +16,25 @@ Memory stays data. Only verified workflows become executable behavior.
 
 ## One link is enough
 
-Give this link to Claude Code, Codex, or another coding agent:
+Give this link to Claude Code or Codex. Other coding agents can follow the same flow when they support repository instructions and local command execution:
 
 `https://github.com/Chulinuwu/skillloom`
 
 Then say:
 
-> Set up Skillloom from this repository. First ask whether this machine should be my Main Hub, a Client Node, or This Machine Only. Handle everything else, pause only when I must sign in or approve something, and verify the Hub and Obsidian links before saying setup is finished.
+> Set up Skillloom on the device where you are running. Never use SSH or require Remote Login to configure another device. First ask whether this device should host my Main Hub, connect to an existing Hub as a Client Node, or remain This Machine Only. Handle everything else, pause only when I must sign in or approve something, and verify the Hub and Obsidian links before saying setup is finished.
 
-The agent handles checkout, plugin installation, host integrations, Hub startup or connection, health checks, and final links. A newly installed plugin may require a fresh task before its skills and MCP bridge appear.
+The normal setup flow operates only on the device where the agent process is running. Remote Login, SSH, Tailscale SSH, rsync, SSHFS, and remote deployment are not Skillloom prerequisites. The agent must state the detected device and selected role before setup side effects.
+
+If another device should become the Main Hub, open the same repository link with an agent running on that device and say "Make this device my Main Hub." Do not enable remote administration just for Skillloom. After that Hub is verified, run the link flow independently on every additional device and choose Client Node.
+
+On a supported host, the agent handles checkout, plugin installation, local host integrations, local Hub startup or connection, health checks, and final links. A newly installed plugin may require a fresh task before its skills and MCP bridge appear.
 
 If you already know the role, include it in the same message:
 
-- "Make this machine my Main Hub."
-- "Connect this machine to `https://<hub-host>`."
-- "Keep everything on this machine."
+- "Host my Main Hub on this device."
+- "Connect this device to `https://<hub-host>` as a Client Node."
+- "Keep Skillloom standalone on this device."
 
 Some vendor-controlled steps still require a person. Skillloom fetches the current official instructions during every onboarding run, opens the relevant page when possible, guides one screen at a time, checkpoints completed work, and resumes after the approval. It never asks you to paste Tailscale secrets into chat.
 

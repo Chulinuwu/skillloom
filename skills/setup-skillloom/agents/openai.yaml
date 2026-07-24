@@ -1,4 +1,4 @@
 interface:
   display_name: "Setup Skillloom"
   short_description: "Host or connect Skillloom and open its private Obsidian UI"
-  default_prompt: "Use $setup-skillloom to configure this machine, preserve the private Tailnet boundary, and report every URL, port, and admin action."
+  default_prompt: "Use $setup-skillloom to configure this device locally without remote login, preserve the private Tailnet boundary, and report every URL and approval."

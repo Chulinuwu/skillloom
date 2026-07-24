@@ -73,6 +73,8 @@ async function validateManifests() {
   const codexMarketplace = await json(".agents/plugins/marketplace.json");
   const ci = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
   const readme = await readFile(join(root, "README.md"), "utf8");
+  const agentInstructions = await readFile(join(root, "AGENTS.md"), "utf8");
+  const claudeInstructions = await readFile(join(root, "CLAUDE.md"), "utf8");
   const version = packageJson.version;
 
   invariant(version === "0.3.8", "package version must be 0.3.8");
@@ -81,6 +83,12 @@ async function validateManifests() {
   invariant(/node:\s*\["22\.16\.0", 24, 26\]/u.test(ci), "CI must test the runtime floor and supported Node.js releases");
   invariant(readme.includes("Node.js 22.16 or newer") && readme.includes("Node.js 22.16, 24, and 26"), "README runtime requirements must match package and CI contracts");
   invariant(readme.includes("## One link is enough") && readme.includes(repository), "README must lead with agent-driven one-link setup");
+  invariant(/operates only on the device where the agent process is running/iu.test(readme), "README one-link setup must be current-device only");
+  invariant(/Remote Login, SSH, Tailscale SSH, rsync, SSHFS, and remote deployment are not Skillloom prerequisites/iu.test(readme), "README must reject implicit remote deployment prerequisites");
+  invariant(/If another device should become the Main Hub[\s\S]*agent running on that device/iu.test(readme), "README must hand off Main Hub setup to the target device");
+  invariant(/Operate only on the device where the current agent process is running/iu.test(agentInstructions), "AGENTS.md must enforce current-device setup");
+  invariant(/Never require or propose Remote Login, SSH, Tailscale SSH, rsync, SSHFS, or remote deployment/iu.test(agentInstructions), "AGENTS.md must reject implicit remote deployment");
+  invariant(claudeInstructions.trim() === "@AGENTS.md", "CLAUDE.md must import the canonical repository instructions");
   invariant(readme.includes("## Supported today") && readme.includes("## Measure retrieval on your machine"), "README must disclose support status and retrieval evidence");
   invariant(packageJson.scripts?.demo?.includes("dist/cli/main.js demo"), "package scripts must expose the isolated demo");
   invariant(packageJson.scripts?.["benchmark:retrieval"]?.includes("benchmark retrieval"), "package scripts must expose the retrieval benchmark");
@@ -145,6 +153,10 @@ async function validateSkills() {
     invariant(/Respond in the language of the user's latest message/iu.test(source), `${name} must follow the user's current language`);
     if (name === "setup-skillloom") {
       invariant(/Ask at most one role question/iu.test(source), `${name} must be role-first before setup side effects`);
+      invariant(/device where this agent process is running/iu.test(source), `${name} must define setup locality from the agent process`);
+      invariant(/Remote Login, SSH, Tailscale SSH, rsync, SSHFS, and remote deployment are not prerequisites/iu.test(source), `${name} must reject implicit remote deployment prerequisites`);
+      invariant(/another device to become the Main Hub[\s\S]*agent running on that device/iu.test(source), `${name} must hand off remote-device setup instead of requesting SSH`);
+      invariant(/detected device plus selected role/iu.test(source), `${name} must announce its device and role before side effects`);
       invariant(/Main Hub/iu.test(source) && /Client Node/iu.test(source) && /This Machine Only/iu.test(source), `${name} must teach the three setup roles`);
       invariant(/dynamic guidance sources/iu.test(source) && /allowlisted official docs or installed CLI help/iu.test(source), `${name} must rely on runtime guidance for external setup steps`);
       invariant(/start of every onboarding invocation[\s\S]*refresh[\s\S]*from the internet/iu.test(source), `${name} must refresh online guidance for every onboarding run`);
@@ -273,6 +285,8 @@ async function validateFiles() {
     "plugin-runtime/skillloom.mjs",
     "docs/benchmarks.md",
     "docs/comparisons.md",
+    "AGENTS.md",
+    "CLAUDE.md",
     "README.md",
     "LICENSE"
   ]) {
@@ -286,6 +300,8 @@ async function validateFiles() {
     "claude.mcp.json",
     "codex.mcp.json",
     ".agents/plugins/marketplace.json",
+    "AGENTS.md",
+    "CLAUDE.md",
     "README.md",
     "test/packaging/validate-plugin.mjs",
     ...await filesUnder("hooks"),

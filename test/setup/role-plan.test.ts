@@ -43,6 +43,7 @@ test("main hub plan separates automatic stack work from unavoidable human author
   assert.ok(plan.steps.some((step) => step.id === "install-docker-compose" && step.action === "human"));
   assert.ok(plan.steps.some((step) => step.id === "start-private-stack" && step.action === "automatic"));
   assert.ok(plan.steps.filter((step) => step.action === "human").every((step) => step.sourceTitles && step.sourceTitles.length > 0));
+  assert.ok(plan.warnings.some((warning) => /Remote Login and SSH are not Skillloom prerequisites/u.test(warning)));
   assert.ok(plan.warnings.some((warning) => /Funnel/u.test(warning)));
   assert.ok(plan.warnings.some((warning) => /TS_AUTHKEY/u.test(warning)));
 });
@@ -118,6 +119,7 @@ test("local-only plan does not require external dynamic guidance evidence", asyn
   );
   assert.equal(plan.status, "ready");
   assert.deepEqual(plan.warnings, [
+    "Setup operates only on this device; Remote Login and SSH are not Skillloom prerequisites.",
     "Tailscale Funnel is not part of Skillloom setup; use private Tailscale Serve only.",
     "Secret-bearing values such as TS_AUTHKEY must stay in the local environment and never be pasted into chat."
   ]);
@@ -146,6 +148,7 @@ test("ambiguous setup role blocks before silently choosing a client node", async
   assert.equal(plan.role, "role-required");
   assert.equal(plan.status, "blocked");
   assert.deepEqual(plan.steps.map((step) => step.id), ["choose-setup-role"]);
+  assert.match(plan.steps[0].title, /host the Brain on this device/u);
 });
 
 test("external setup steps block when their source evidence is missing", async () => {

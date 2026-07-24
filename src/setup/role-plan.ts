@@ -44,7 +44,7 @@ export function assertSafeSetupStepCommands(steps: readonly SetupPlanStep[]): vo
 function roleSelectionSteps(): SetupPlanStep[] {
   return [{
     id: "choose-setup-role",
-    title: "Choose whether this machine is Main Hub, Client Node, or This Machine Only",
+    title: "Choose whether to host the Brain on this device, connect this device as a Client Node, or keep this device standalone",
     action: "human",
     verification: "Setup is rerun with --role main-hub, --role client-node, or --role local-only plus --hub local."
   }];
@@ -130,6 +130,7 @@ function warningsFor(role: SetupRole | null, environment: SetupEnvironment, sour
   const warnings = [
     ...(role === null ? ["Setup role is ambiguous; choose Main Hub, Client Node, or This Machine Only before any setup side effects."] : []),
     ...(role !== "local-only" && sources.length === 0 ? ["Dynamic official docs and local CLI help were unavailable; setup must not guess changing external steps."] : []),
+    "Setup operates only on this device; Remote Login and SSH are not Skillloom prerequisites.",
     "Tailscale Funnel is not part of Skillloom setup; use private Tailscale Serve only.",
     "Secret-bearing values such as TS_AUTHKEY must stay in the local environment and never be pasted into chat."
   ];
