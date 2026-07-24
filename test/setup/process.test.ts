@@ -65,7 +65,7 @@ test("native Windows setup discovers and runs a command shim with spaced argumen
   const root = await mkdtemp(join(tmpdir(), "skillloom command shim "));
   const executable = join(root, "skillloom-test.cmd");
   try {
-    await writeFile(executable, "@echo off\r\n<nul set /p \"=%~1\"\r\n");
+    await writeFile(executable, "@echo off\r\n<nul set /p \"=%~1\"\r\nexit /b 0\r\n");
     const processes = new SystemProcessPort(root, {}, {
       platform: "win32",
       pathExt: ".CMD",
