@@ -77,7 +77,7 @@ async function validateManifests() {
   const claudeInstructions = await readFile(join(root, "CLAUDE.md"), "utf8");
   const version = packageJson.version;
 
-  invariant(version === "0.3.8", "package version must be 0.3.8");
+  invariant(version === "0.3.9", "package version must be 0.3.9");
   invariant(packageLock.version === version && packageLock.packages?.[""]?.version === version, "package-lock version must match package.json");
   invariant(packageJson.engines?.node === ">=22.16.0", "package Node.js runtime floor must be 22.16.0");
   invariant(/node:\s*\["22\.16\.0", 24, 26\]/u.test(ci), "CI must test the runtime floor and supported Node.js releases");
@@ -86,10 +86,12 @@ async function validateManifests() {
   invariant(/operates only on the device where the agent process is running/iu.test(readme), "README one-link setup must be current-device only");
   invariant(/Remote Login, SSH, Tailscale SSH, rsync, SSHFS, and remote deployment are not Skillloom prerequisites/iu.test(readme), "README must reject implicit remote deployment prerequisites");
   invariant(/If another device should become the Main Hub[\s\S]*agent running on that device/iu.test(readme), "README must hand off Main Hub setup to the target device");
-  invariant(/Main Hub and Client Nodes may use different operating systems/iu.test(readme), "README must document mixed-OS topology support");
+invariant(/Main Hub and Client Nodes may use different operating systems/iu.test(readme), "README must document mixed-OS topology support");
+invariant(/pasted Hub URL is optional[\s\S]*verifies `?\/v1\/hello`?/iu.test(readme), "README must require verified Tailscale peer discovery before claiming a Hub is absent");
   invariant(/Operate only on the device where the current agent process is running/iu.test(agentInstructions), "AGENTS.md must enforce current-device setup");
   invariant(/Never require or propose Remote Login, SSH, Tailscale SSH, rsync, SSHFS, or remote deployment/iu.test(agentInstructions), "AGENTS.md must reject implicit remote deployment");
-  invariant(/Treat mixed operating systems as a normal topology/iu.test(agentInstructions), "AGENTS.md must prevent OS mismatch handoffs");
+invariant(/Treat mixed operating systems as a normal topology/iu.test(agentInstructions), "AGENTS.md must prevent OS mismatch handoffs");
+invariant(/Tailscale peer state plus a successful Skillloom `?\/v1\/hello`? negotiation is the source of truth/iu.test(agentInstructions), "AGENTS.md must ground automatic Hub discovery in live Tailscale and protocol evidence");
   invariant(claudeInstructions.trim() === "@AGENTS.md", "CLAUDE.md must import the canonical repository instructions");
   invariant(readme.includes("## Supported today") && readme.includes("## Measure retrieval on your machine"), "README must disclose support status and retrieval evidence");
   invariant(packageJson.scripts?.demo?.includes("dist/cli/main.js demo"), "package scripts must expose the isolated demo");
@@ -158,7 +160,8 @@ async function validateSkills() {
       invariant(/device where this agent process is running/iu.test(source), `${name} must define setup locality from the agent process`);
       invariant(/Remote Login, SSH, Tailscale SSH, rsync, SSHFS, and remote deployment are not prerequisites/iu.test(source), `${name} must reject implicit remote deployment prerequisites`);
       invariant(/another device to become the Main Hub[\s\S]*agent running on that device/iu.test(source), `${name} must hand off remote-device setup instead of requesting SSH`);
-      invariant(/Treat mixed operating systems as a normal supported topology/iu.test(source), `${name} must attempt mixed-OS setup before discussing compatibility`);
+    invariant(/Treat mixed operating systems as a normal supported topology/iu.test(source), `${name} must attempt mixed-OS setup before discussing compatibility`);
+    invariant(/A pasted Hub URL is optional[\s\S]*current Tailscale peer state[\s\S]*\/v1\/hello/iu.test(source), `${name} must run live peer discovery before claiming a Hub is absent`);
       invariant(/Do not redirect a native Windows user to WSL/iu.test(source), `${name} must keep native Windows onboarding in the bundled flow`);
       invariant(/detected device plus selected role/iu.test(source), `${name} must announce its device and role before side effects`);
       invariant(/Main Hub/iu.test(source) && /Client Node/iu.test(source) && /This Machine Only/iu.test(source), `${name} must teach the three setup roles`);

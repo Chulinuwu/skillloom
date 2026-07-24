@@ -58,7 +58,8 @@ export class SetupService implements SetupServicePort {
     }
     const discovery: HubSetupDiscovery = request.hub === "local" ? { mode: "local-only" } : await this.hub.discover(root, request.hubUrl);
     if (request.hub === "auto" && discovery.mode === "local-only") {
-      throw new UsageError("Skillloom Hub was not reachable; rerun with --hub local for explicit local-only setup");
+      const attempted = discovery.attempted?.length ? ` Attempted: ${discovery.attempted.join(", ")}.` : "";
+      throw new UsageError(`Skillloom Hub was not reachable.${attempted} Rerun with --hub local for explicit local-only setup`);
     }
     await this.requireConsent(request, discovery);
     if (discovery.mode === "connected") {

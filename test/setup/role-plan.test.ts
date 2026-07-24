@@ -74,7 +74,8 @@ test("client node plan trusts a credential-free URL before installing harnesses"
   );
   assert.equal(plan.role, "client-node");
   assert.equal(plan.status, "needs-human");
-  assert.deepEqual(plan.steps.map((step) => step.id), ["trust-hub", "install-plugin-integrations"]);
+  assert.deepEqual(plan.steps.map((step) => step.id), ["discover-hub", "trust-hub", "install-plugin-integrations"]);
+  assert.equal(plan.steps[0].action, "automatic");
   assert.deepEqual(plan.steps[0].sourceTitles, ["Tailscale Serve"]);
   assert.doesNotMatch(JSON.stringify(plan), /funnel --yes/iu);
   assert.doesNotMatch(JSON.stringify(plan), /tailscale up/iu);

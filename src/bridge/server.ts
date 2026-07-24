@@ -51,7 +51,7 @@ export function createBridgeServer(options: BridgeServerOptions): BridgeServer {
       return success(id, {
         protocolVersion: params.protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "skillloom-bridge", version: "0.3.8" }
+    serverInfo: { name: "skillloom-bridge", version: "0.3.9" }
       });
     }
     if (request.method === "ping") {

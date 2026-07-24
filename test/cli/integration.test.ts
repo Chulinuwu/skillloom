@@ -156,7 +156,7 @@ test("built setup is explicit local-only, offline-safe, and idempotent with no h
   assert.equal(second.targets.find(({ target }: { target: string }) => target === "agents").status, "unchanged");
   await stat(join(homeDir, ".agents", "skills", "capture-learning", "SKILL.md"));
   const state = JSON.parse(await readFile(join(homeDir, ".skillloom", "hub", "setup.json"), "utf8"));
-  assert.equal(state.completed["agents:user"].packageVersion, "0.3.8");
+  assert.equal(state.completed["agents:user"].packageVersion, "0.3.9");
 });
 
 test("built CLI runs the isolated trust-boundary demo without writing to HOME", async () => {

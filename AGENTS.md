@@ -7,6 +7,7 @@ When the user asks to install or set up Skillloom from this repository:
 - Interpret Main Hub as hosting the Brain on this device, Client Node as connecting this device to an existing Hub, and This Machine Only as keeping this device standalone.
 - Treat mixed operating systems as a normal topology. A Main Hub and its Client Nodes do not need to run the same OS.
 - On a Client Node, attempt the bundled setup on the current device before discussing platform support. Do not redirect native Windows users to WSL or another machine unless an actual prerequisite check or setup command fails with evidence.
+- On a Client Node without a supplied Hub URL, run bundled Tailscale discovery before claiming that no Hub exists. Do not infer Hub absence from missing SSH access, conversation history, repository state, or the lack of a pasted URL. Tailscale peer state plus a successful Skillloom `/v1/hello` negotiation is the source of truth.
 - State the detected device and selected role before setup side effects.
 - If another device should be the Main Hub, give the user this repository link and a one-sentence handoff to an agent running on that device. Do not remotely deploy it.
 - Install the plugin for the current supported host, then use `setup-skillloom` and its bundled runner. Setup may install integrations only for harnesses detected on this device.

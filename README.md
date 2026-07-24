@@ -28,13 +28,14 @@ The normal setup flow operates only on the device where the agent process is run
 
 If another device should become the Main Hub, open the same repository link with an agent running on that device and say "Make this device my Main Hub." Do not enable remote administration just for Skillloom. After that Hub is verified, run the link flow independently on every additional device and choose Client Node.
 
-The Main Hub and Client Nodes may use different operating systems. Native Windows setup resolves `.exe`, `.cmd`, and `.bat` tools, while macOS and Linux use their native executables. The agent should run the bundled setup before discussing platform limitations and should stop only on a prerequisite failure it can show.
+The Main Hub and Client Nodes may use different operating systems. Native Windows setup resolves `.exe`, `.cmd`, and `.bat` tools, while macOS and Linux use their native executables. After Client Node is selected, the agent runs bundled Tailscale discovery immediately. A pasted Hub URL is optional: Skillloom inspects current tailnet peers and verifies `/v1/hello` before it can claim that no Hub exists. Missing SSH access, prior chat context, or an absent URL is never evidence that the Hub is missing.
 
 On a supported host, the agent handles checkout, plugin installation, local host integrations, local Hub startup or connection, health checks, and final links. A newly installed plugin may require a fresh task before its skills and MCP bridge appear.
 
 If you already know the role, include it in the same message:
 
 - "Host my Main Hub on this device."
+- "Connect this device as a Client Node." Skillloom discovers the Hub from the current Tailnet.
 - "Connect this device to `https://<hub-host>` as a Client Node."
 - "Keep Skillloom standalone on this device."
 

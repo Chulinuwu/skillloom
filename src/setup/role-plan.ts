@@ -76,8 +76,15 @@ function clientSteps(request: SetupRequest, environment: SetupEnvironment, sourc
       sourceTitles: tailscaleSources
     }]),
     {
+      id: "discover-hub",
+      title: request.hubUrl ? "Verify the supplied credential-free Hub URL" : "Discover the active Skillloom Hub from current Tailscale peer state",
+      action: "automatic",
+      verification: "The setup runner probes the Hub protocol on candidate tailnet device names and reports the verified Hub identity.",
+      sourceTitles: tailscaleSources
+    },
+    {
       id: "trust-hub",
-      title: request.hubUrl ? "Trust the supplied credential-free Hub URL" : "Discover and trust the private Skillloom Hub",
+      title: "Approve the verified private Skillloom Hub identity",
       action: "human",
       verification: "Hub hello, Brain read verification, registry reconcile, and signing-key pin all succeed before local installation.",
       sourceTitles: tailscaleSources

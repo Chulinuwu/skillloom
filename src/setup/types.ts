@@ -4,7 +4,7 @@ export type SetupHarnessTarget = "claude" | "codex" | "agents";
 export type SetupTarget = SetupHarnessTarget | "auto";
 
 export type HubSetupDiscovery =
-  | { mode: "local-only" }
+  | { mode: "local-only"; attempted?: readonly string[] }
   | {
       mode: "connected";
       endpoint: string;

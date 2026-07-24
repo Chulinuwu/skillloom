@@ -67,6 +67,8 @@ Without a URL, use Tailscale discovery:
 node scripts/skillloom.mjs setup --role client-node --target auto --hub auto --scope user
 ```
 
+Run this command immediately after the user chooses Client Node. A pasted Hub URL is optional. Never claim that the Hub does not exist based on missing SSH access, prior conversation, repository state, or the absence of a pasted URL. The runner must inspect current Tailscale peer state and verify the Skillloom protocol through `/v1/hello`; only its concrete attempted endpoints and result may establish that discovery failed.
+
 Show the trust preview and obtain consent. Do not add `--yes` unless the user already explicitly approved the displayed Hub identity and installation.
 
 ## Host the Hub and Obsidian

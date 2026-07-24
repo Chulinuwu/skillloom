@@ -6,6 +6,7 @@ import {
   HubTrustNotEstablishedError,
   openHubSession,
   previewHubSession,
+  readTailscaleDiscoveryState,
   readTailscaleMagicDnsSuffix,
   setupHubSession,
   trustHubSession,
@@ -51,6 +52,49 @@ test("extracts MagicDNSSuffix from an injected local tailscale status process", 
   assert.equal(await readTailscaleMagicDnsSuffix(status(JSON.stringify({ MagicDNSSuffix: "Tailnet.TS.NET." }))), "tailnet.ts.net");
   await assert.rejects(() => readTailscaleMagicDnsSuffix(status("{}")), /MagicDNSSuffix/);
   await assert.rejects(() => readTailscaleMagicDnsSuffix(status("not-json")), /JSON/);
+});
+test("extracts online tailnet peer DNS names without including the current device", async () => {
+  const result = await readTailscaleDiscoveryState(status(JSON.stringify({
+    MagicDNSSuffix: "Tailnet.TS.NET.",
+    Self: { DNSName: "client.tailnet.ts.net.", Online: true },
+    Peer: {
+      hub: { DNSName: "mac-hub.tailnet.ts.net.", Online: true },
+      offline: { DNSName: "old.tailnet.ts.net.", Online: false },
+      external: { DNSName: "outside.example.com.", Online: true }
+    }
+  })));
+  assert.deepEqual(result, {
+    magicDnsSuffix: "tailnet.ts.net",
+    peerDnsNames: ["mac-hub.tailnet.ts.net"]
+  });
+});
+test("setup discovers a Main Hub published on its device MagicDNS name", async () => {
+  const root = await tempDir("skillloom-hub-peer-setup-");
+  const key = publicKey();
+  const attempts: string[] = [];
+  const session = await setupHubSession({
+    root,
+    clientVersion: "0.2.1",
+    tailscaleStatus: status(JSON.stringify({
+      MagicDNSSuffix: "tailnet.ts.net",
+      Self: { DNSName: "windows.tailnet.ts.net.", Online: true },
+      Peer: {
+        hub: { DNSName: "mac-hub.tailnet.ts.net.", Online: true }
+      }
+    })),
+    createClient: (baseUrl) => ({ request: async (request) => {
+      attempts.push(`${baseUrl}${"path" in request ? request.path : request.mutation.path}`);
+      if (baseUrl !== "https://mac-hub.tailnet.ts.net") throw new TypeError("not a Hub");
+      return request.parse(hello(key));
+    } }),
+    consent: { explicit: true, trustedAt: "2026-07-21T00:00:00.000Z" }
+  });
+  assert.equal(session.endpoint.url, "https://mac-hub.tailnet.ts.net");
+  assert.deepEqual(attempts, [
+    "https://skillloom.tailnet.ts.net/v1/hello",
+    "https://skillloom-hub.tailnet.ts.net/v1/hello",
+    "https://mac-hub.tailnet.ts.net/v1/hello"
+  ]);
 });
 
 test("setup discovers, negotiates hello, and persists trust only with explicit consent", async () => {

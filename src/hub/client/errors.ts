@@ -23,7 +23,11 @@ export class HubTrustChangedError extends HubClientError {
 }
 
 export class HubUnavailableError extends HubClientError {
-  constructor(message = "Skillloom Hub is unavailable", options?: ErrorOptions) {
+  constructor(
+    message = "Skillloom Hub is unavailable",
+    options?: ErrorOptions,
+    readonly attempted: readonly string[] = []
+  ) {
     super(message, "HUB_UNAVAILABLE", options);
   }
 }

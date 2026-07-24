@@ -7581,7 +7581,7 @@ function createBridgeServer(options) {
       return success(id, {
         protocolVersion: params.protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "skillloom-bridge", version: "0.3.8" }
+        serverInfo: { name: "skillloom-bridge", version: "0.3.9" }
       });
     }
     if (request.method === "ping") {
@@ -7960,9 +7960,11 @@ var HubTrustChangedError = class extends HubClientError {
   }
 };
 var HubUnavailableError = class extends HubClientError {
-  constructor(message2 = "Skillloom Hub is unavailable", options) {
+  constructor(message2 = "Skillloom Hub is unavailable", options, attempted = []) {
     super(message2, "HUB_UNAVAILABLE", options);
+    this.attempted = attempted;
   }
+  attempted;
 };
 var HubTimeoutError = class extends HubClientError {
   constructor(message2 = "Skillloom Hub request timed out", options) {
@@ -8223,15 +8225,42 @@ async function mutate(root4, client, requestId2, method, path, body, parse2) {
   });
 }
 
+// src/hub/client/magic-dns.ts
+var DNS_NAME_PATTERN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+function normalizeMagicDnsSuffix(value) {
+  const suffix = normalizeDnsName(value);
+  if (!suffix) throw new HubDiscoveryConfigurationError("Tailscale MagicDNS suffix is invalid");
+  return suffix;
+}
+function normalizeTailnetDnsName(value, suffix) {
+  if (typeof value !== "string") return null;
+  const name = normalizeDnsName(value);
+  if (!name || !name.endsWith(`.${suffix}`)) return null;
+  return name;
+}
+function normalizeDnsName(value) {
+  const name = value.trim().replace(/\.$/u, "").toLowerCase();
+  return DNS_NAME_PATTERN.test(name) ? name : null;
+}
+
 // src/hub/client/discovery.ts
 async function discoverHub(options) {
   const candidates = buildCandidates(options);
   const attempted = [];
-  for (const candidate2 of candidates) {
+  for (const candidate2 of candidates.filter((item) => item.discovery === "priority")) {
     attempted.push(candidate2.url);
     if (await options.probe(candidate2)) {
       return { mode: "connected", endpoint: candidate2.endpoint, attempted };
     }
+  }
+  const peerCandidates = candidates.filter((item) => item.discovery === "tailnet-peer").slice(0, 128);
+  attempted.push(...peerCandidates.map((item) => item.url));
+  const peerMatches = (await Promise.all(peerCandidates.map(async (item) => await options.probe(item)))).map((matched, index) => matched ? peerCandidates[index] : null).filter((item) => item !== null);
+  if (peerMatches.length > 1) {
+    throw new HubDiscoveryConfigurationError(`Multiple Skillloom Hubs were discovered: ${peerMatches.map((item) => item.url).join(", ")}. Rerun setup with --hub-url for the intended Hub.`);
+  }
+  if (peerMatches[0]) {
+    return { mode: "connected", endpoint: peerMatches[0].endpoint, attempted };
   }
   return { mode: "local-only", attempted };
 }
@@ -8249,25 +8278,22 @@ function buildCandidates(options) {
   }
   if (options.cachedEndpoint) {
     const endpoint = parseHubEndpoint(options.cachedEndpoint);
-    candidates.push({ source: "cached", endpoint, url: endpoint.url });
+    candidates.push({ source: "cached", discovery: "priority", endpoint, url: endpoint.url });
   }
   if (options.magicDnsSuffix !== void 0) {
     const suffix = normalizeMagicDnsSuffix(options.magicDnsSuffix);
     candidates.push(candidate("service", `https://skillloom.${suffix}`, verifiedAt));
     candidates.push(candidate("host", `https://skillloom-hub.${suffix}`, verifiedAt));
+    for (const value of [...options.tailnetDnsNames ?? []].sort()) {
+      const name = normalizeTailnetDnsName(value, suffix);
+      if (name) candidates.push(candidate("host", `https://${name}`, verifiedAt, "tailnet-peer"));
+    }
   }
   return deduplicate(candidates);
 }
-function candidate(source, url, verifiedAt) {
+function candidate(source, url, verifiedAt, discovery = "priority") {
   const endpoint = { version: 1, source, serviceName: DEFAULT_HUB_SERVICE_NAME, url, verifiedAt };
-  return { source, endpoint, url };
-}
-function normalizeMagicDnsSuffix(value) {
-  const suffix = value.trim().replace(/\.$/, "").toLowerCase();
-  if (!/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(suffix)) {
-    throw new HubDiscoveryConfigurationError("Tailscale MagicDNS suffix is invalid");
-  }
-  return suffix;
+  return { source, discovery, endpoint, url };
 }
 function deduplicate(candidates) {
   const seen = /* @__PURE__ */ new Set();
@@ -9688,7 +9714,7 @@ function isAbort(error) {
 }
 
 // src/hub/client/tailscale-status.ts
-async function readTailscaleMagicDnsSuffix(process2) {
+async function readTailscaleDiscoveryState(process2) {
   const result = await process2.run("tailscale", ["status", "--json"]);
   if (result.exitCode !== 0) {
     throw new HubDiscoveryConfigurationError("tailscale status --json failed");
@@ -9702,9 +9728,11 @@ async function readTailscaleMagicDnsSuffix(process2) {
   if (!isRecord18(value) || typeof value.MagicDNSSuffix !== "string") {
     throw new HubDiscoveryConfigurationError("tailscale status is missing MagicDNSSuffix");
   }
-  const suffix = value.MagicDNSSuffix.trim().replace(/\.$/, "").toLowerCase();
-  if (suffix.length === 0) throw new HubDiscoveryConfigurationError("tailscale status has an empty MagicDNSSuffix");
-  return suffix;
+  const magicDnsSuffix = normalizeMagicDnsSuffix(value.MagicDNSSuffix);
+  const selfDnsName = isRecord18(value.Self) ? normalizeTailnetDnsName(value.Self.DNSName, magicDnsSuffix) : null;
+  const peers = isRecord18(value.Peer) ? Object.values(value.Peer) : [];
+  const peerDnsNames = peers.filter((peer) => isRecord18(peer) && peer.Online !== false).map((peer) => normalizeTailnetDnsName(peer.DNSName, magicDnsSuffix)).filter((name) => name !== null && name !== selfDnsName).sort();
+  return { magicDnsSuffix, peerDnsNames: [...new Set(peerDnsNames)] };
 }
 function isRecord18(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -9713,7 +9741,9 @@ function isRecord18(value) {
 // src/hub/client/session.ts
 async function previewHubSession(options) {
   const resolved = await resolveSession(options, false);
-  if (resolved.mode === "local-only") throw new HubUnavailableError("Skillloom Hub could not be verified during setup");
+  if (resolved.mode === "local-only") {
+    throw new HubUnavailableError("Skillloom Hub could not be verified during setup", void 0, resolved.attempted);
+  }
   return resolved;
 }
 async function trustHubSession(root4, preview, consent) {
@@ -9728,13 +9758,16 @@ async function openHubSession(options) {
 }
 async function resolveSession(options, verifyOnly) {
   const cachedEndpoint = await readHubEndpoint(options.root);
-  const magicDnsSuffix = await optionalMagicDnsSuffix(options.tailscaleStatus);
+  const tailscale = await optionalTailscaleDiscoveryState(options.tailscaleStatus);
   const negotiated = /* @__PURE__ */ new Map();
   const trust = verifyOnly ? await readHubTrust(options.root) : null;
   const discovery = await discoverHub({
     ...options.developmentUrl === void 0 ? {} : { developmentUrl: options.developmentUrl },
     cachedEndpoint,
-    ...magicDnsSuffix === void 0 ? {} : { magicDnsSuffix },
+    ...tailscale === void 0 ? {} : {
+      magicDnsSuffix: tailscale.magicDnsSuffix,
+      tailnetDnsNames: tailscale.peerDnsNames
+    },
     ...options.now === void 0 ? {} : { now: options.now },
     probe: async (candidate2) => {
       const client = options.createClient(candidate2.url);
@@ -9761,10 +9794,10 @@ async function resolveSession(options, verifyOnly) {
     attempted: discovery.attempted
   };
 }
-async function optionalMagicDnsSuffix(process2) {
+async function optionalTailscaleDiscoveryState(process2) {
   if (!process2) return void 0;
   try {
-    return await readTailscaleMagicDnsSuffix(process2);
+    return await readTailscaleDiscoveryState(process2);
   } catch {
     return void 0;
   }
@@ -10651,7 +10684,7 @@ var HubSetupAdapter = class {
         ...hubUrl === void 0 ? {} : { developmentUrl: hubUrl }
       });
     } catch (error) {
-      if (error instanceof HubUnavailableError) return { mode: "local-only" };
+      if (error instanceof HubUnavailableError) return { mode: "local-only", attempted: error.attempted };
       throw error;
     }
     const existingTrust = await readHubTrust(root4);
@@ -11045,7 +11078,8 @@ var SetupService = class {
     }
     const discovery = request.hub === "local" ? { mode: "local-only" } : await this.hub.discover(root4, request.hubUrl);
     if (request.hub === "auto" && discovery.mode === "local-only") {
-      throw new UsageError("Skillloom Hub was not reachable; rerun with --hub local for explicit local-only setup");
+      const attempted = discovery.attempted?.length ? ` Attempted: ${discovery.attempted.join(", ")}.` : "";
+      throw new UsageError(`Skillloom Hub was not reachable.${attempted} Rerun with --hub local for explicit local-only setup`);
     }
     await this.requireConsent(request, discovery);
     if (discovery.mode === "connected") {
@@ -11207,8 +11241,15 @@ function clientSteps(request, environment, sources) {
       sourceTitles: tailscaleSources
     }],
     {
+      id: "discover-hub",
+      title: request.hubUrl ? "Verify the supplied credential-free Hub URL" : "Discover the active Skillloom Hub from current Tailscale peer state",
+      action: "automatic",
+      verification: "The setup runner probes the Hub protocol on candidate tailnet device names and reports the verified Hub identity.",
+      sourceTitles: tailscaleSources
+    },
+    {
       id: "trust-hub",
-      title: request.hubUrl ? "Trust the supplied credential-free Hub URL" : "Discover and trust the private Skillloom Hub",
+      title: "Approve the verified private Skillloom Hub identity",
       action: "human",
       verification: "Hub hello, Brain read verification, registry reconcile, and signing-key pin all succeed before local installation.",
       sourceTitles: tailscaleSources

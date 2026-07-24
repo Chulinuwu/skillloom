@@ -9,7 +9,7 @@ import type { NegotiationResponse } from "../protocol/index.js";
 import { discoverHub } from "./discovery.js";
 import { HubHttpError, HubTimeoutError, HubTrustNotEstablishedError, HubUnavailableError } from "./errors.js";
 import { negotiateHub } from "./negotiation.js";
-import { readTailscaleMagicDnsSuffix, type TailscaleStatusProcess } from "./tailscale-status.js";
+import { readTailscaleDiscoveryState, type TailscaleDiscoveryState, type TailscaleStatusProcess } from "./tailscale-status.js";
 import type { HubHttpClient } from "./transport-types.js";
 import { establishHubTrust, verifyHubTrust, type ExplicitHubTrustConsent } from "./trust.js";
 
@@ -49,7 +49,9 @@ export async function setupHubSession(options: SetupHubSessionOptions): Promise<
 
 export async function previewHubSession(options: HubSessionOptions): Promise<ConnectedHubSession> {
   const resolved = await resolveSession(options, false);
-  if (resolved.mode === "local-only") throw new HubUnavailableError("Skillloom Hub could not be verified during setup");
+  if (resolved.mode === "local-only") {
+    throw new HubUnavailableError("Skillloom Hub could not be verified during setup", undefined, resolved.attempted);
+  }
   return resolved;
 }
 
@@ -71,13 +73,16 @@ export async function openHubSession(options: HubSessionOptions): Promise<HubSes
 
 async function resolveSession(options: HubSessionOptions, verifyOnly: boolean): Promise<HubSession> {
   const cachedEndpoint = await readHubEndpoint(options.root);
-  const magicDnsSuffix = await optionalMagicDnsSuffix(options.tailscaleStatus);
+  const tailscale = await optionalTailscaleDiscoveryState(options.tailscaleStatus);
   const negotiated = new Map<string, { client: HubHttpClient; response: NegotiationResponse }>();
   const trust = verifyOnly ? await readHubTrust(options.root) : null;
   const discovery = await discoverHub({
     ...(options.developmentUrl === undefined ? {} : { developmentUrl: options.developmentUrl }),
     cachedEndpoint,
-    ...(magicDnsSuffix === undefined ? {} : { magicDnsSuffix }),
+    ...(tailscale === undefined ? {} : {
+      magicDnsSuffix: tailscale.magicDnsSuffix,
+      tailnetDnsNames: tailscale.peerDnsNames
+    }),
     ...(options.now === undefined ? {} : { now: options.now }),
     probe: async (candidate) => {
       const client = options.createClient(candidate.url);
@@ -105,10 +110,10 @@ async function resolveSession(options: HubSessionOptions, verifyOnly: boolean): 
   };
 }
 
-async function optionalMagicDnsSuffix(process: TailscaleStatusProcess | undefined): Promise<string | undefined> {
+async function optionalTailscaleDiscoveryState(process: TailscaleStatusProcess | undefined): Promise<TailscaleDiscoveryState | undefined> {
   if (!process) return undefined;
   try {
-    return await readTailscaleMagicDnsSuffix(process);
+    return await readTailscaleDiscoveryState(process);
   } catch {
     return undefined;
   }

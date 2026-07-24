@@ -1,6 +1,6 @@
 {
   "name": "@chulinxz/skillloom",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Private second brain that shares agent knowledge without letting memory silently become executable instructions",
   "type": "module",
   "license": "MIT",

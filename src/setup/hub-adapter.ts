@@ -42,7 +42,7 @@ export class HubSetupAdapter implements HubSetupPort {
         ...(hubUrl === undefined ? {} : { developmentUrl: hubUrl })
       });
     } catch (error) {
-      if (error instanceof HubUnavailableError) return { mode: "local-only" };
+      if (error instanceof HubUnavailableError) return { mode: "local-only", attempted: error.attempted };
       throw error;
     }
     const existingTrust = await readHubTrust(root);

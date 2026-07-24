@@ -11,15 +11,16 @@ const cached: HubEndpointCache = {
   verifiedAt: "2026-07-21T00:00:00.000Z"
 };
 
-test("discovers in override, cache, service, then host order", async () => {
+test("discovers in override, cache, service, conventional host, then tailnet peer order", async () => {
   const attempts: string[] = [];
   const result = await discoverHub({
     developmentUrl: "https://dev.example.test",
     cachedEndpoint: cached,
     magicDnsSuffix: "tailnet.ts.net",
+    tailnetDnsNames: ["mac-hub.tailnet.ts.net."],
     probe: async (candidate) => {
       attempts.push(candidate.url);
-      return candidate.source === "host";
+      return candidate.url === "https://mac-hub.tailnet.ts.net";
     }
   });
   assert.equal(result.mode, "connected");
@@ -28,8 +29,33 @@ test("discovers in override, cache, service, then host order", async () => {
     "https://dev.example.test",
     "https://cached.tailnet.ts.net",
     "https://skillloom.tailnet.ts.net",
-    "https://skillloom-hub.tailnet.ts.net"
+    "https://skillloom-hub.tailnet.ts.net",
+    "https://mac-hub.tailnet.ts.net"
   ]);
+});
+test("ignores peer names outside the current tailnet and deduplicates conventional names", async () => {
+  const result = await discoverHub({
+    magicDnsSuffix: "tailnet.ts.net",
+    tailnetDnsNames: [
+      "skillloom-hub.tailnet.ts.net.",
+      "outside.example.com",
+      "CLIENT.tailnet.ts.net.",
+      "client.tailnet.ts.net"
+    ],
+    probe: async () => false
+  });
+  assert.deepEqual(result.attempted, [
+    "https://skillloom.tailnet.ts.net",
+    "https://skillloom-hub.tailnet.ts.net",
+    "https://client.tailnet.ts.net"
+  ]);
+});
+test("requires an explicit URL when multiple peer devices expose Skillloom Hubs", async () => {
+  await assert.rejects(() => discoverHub({
+    magicDnsSuffix: "tailnet.ts.net",
+    tailnetDnsNames: ["hub-b.tailnet.ts.net", "hub-a.tailnet.ts.net"],
+    probe: async (candidate) => candidate.discovery === "tailnet-peer"
+  }), /Multiple Skillloom Hubs.*--hub-url/u);
 });
 
 test("returns a safe local-only degraded result when all candidates are unavailable", async () => {
