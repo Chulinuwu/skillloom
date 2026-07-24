@@ -50,10 +50,10 @@ async function filesUnder(path) {
 }
 
 function frontmatter(source) {
-  const block = source.match(/^---\n([\s\S]*?)\n---/u)?.[1];
+  const block = source.replace(/^\uFEFF/u, "").match(/^---\r?\n([\s\S]*?)\r?\n---/u)?.[1];
   invariant(block, "SKILL.md must start with YAML frontmatter");
   const values = new Map();
-  for (const line of block.split("\n")) {
+  for (const line of block.split(/\r?\n/u)) {
     const match = line.match(/^([a-z_]+):\s*(.+)$/u);
     if (match) {
       values.set(match[1], match[2].trim());
