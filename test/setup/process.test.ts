@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  defaultExecutableFallbacks,
   executableCandidates,
   prepareProcessInvocation,
   type ExecutableRuntime
@@ -15,6 +16,25 @@ const windowsRuntime: ExecutableRuntime = {
   pathExt: ".EXE;.CMD",
   commandInterpreter: "C:\\Windows\\System32\\cmd.exe"
 };
+test("Windows executable fallbacks cover native, npm, and WinGet agent installs", () => {
+  assert.deepEqual(defaultExecutableFallbacks(windowsRuntime, {
+    ProgramFiles: "C:\\Program Files",
+    USERPROFILE: "C:\\Users\\Ada",
+    APPDATA: "C:\\Users\\Ada\\AppData\\Roaming",
+    LOCALAPPDATA: "C:\\Users\\Ada\\AppData\\Local"
+  }), {
+    tailscale: ["C:\\Program Files\\Tailscale\\tailscale.exe"],
+    claude: [
+      "C:\\Users\\Ada\\.local\\bin\\claude.exe",
+      "C:\\Users\\Ada\\AppData\\Roaming\\npm\\claude.cmd",
+      "C:\\Users\\Ada\\AppData\\Local\\Microsoft\\WinGet\\Links\\claude.exe"
+    ],
+    codex: [
+      "C:\\Users\\Ada\\AppData\\Roaming\\npm\\codex.cmd",
+      "C:\\Users\\Ada\\AppData\\Local\\Microsoft\\WinGet\\Links\\codex.exe"
+    ]
+  });
+});
 
 test("Windows executable discovery applies PATHEXT across every PATH entry", () => {
   assert.deepEqual(

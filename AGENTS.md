@@ -11,6 +11,7 @@ When the user asks to install or set up Skillloom from this repository:
 - State the detected device and selected role before setup side effects.
 - If another device should be the Main Hub, give the user this repository link and a one-sentence handoff to an agent running on that device. Do not remotely deploy it.
 - Install the plugin for the current supported host, then use `setup-skillloom` and its bundled runner. Setup may install integrations only for harnesses detected on this device.
+- On Windows, harness detection must exhaust PATH plus supported native, npm, and WinGet per-user install locations before reporting `not-detected`. If the current agent is running inside that harness, treat `not-detected` as executable resolution failure, not proof that the harness is absent, and do not fall back to manual MCP configuration first.
 
 Remote administration is an advanced workflow outside the one-link setup contract. Use it only when the user explicitly requests remote management and separately authorizes access to the exact target.
 

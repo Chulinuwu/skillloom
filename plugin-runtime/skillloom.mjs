@@ -7581,7 +7581,7 @@ function createBridgeServer(options) {
       return success(id, {
         protocolVersion: params.protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "skillloom-bridge", version: "0.3.9" }
+        serverInfo: { name: "skillloom-bridge", version: "0.3.10" }
       });
     }
     if (request.method === "ping") {
@@ -10870,8 +10870,21 @@ function defaultExecutableFallbacks(runtime, environment = process.env) {
   if (runtime.platform === "darwin") {
     return { tailscale: ["/Applications/Tailscale.app/Contents/MacOS/Tailscale"] };
   }
-  if (runtime.platform !== "win32" || !environment.ProgramFiles) return {};
-  return { tailscale: [win32.join(environment.ProgramFiles, "Tailscale", "tailscale.exe")] };
+  if (runtime.platform !== "win32") return {};
+  return {
+    tailscale: compact([
+      environment.ProgramFiles && win32.join(environment.ProgramFiles, "Tailscale", "tailscale.exe")
+    ]),
+    claude: compact([
+      environment.USERPROFILE && win32.join(environment.USERPROFILE, ".local", "bin", "claude.exe"),
+      environment.APPDATA && win32.join(environment.APPDATA, "npm", "claude.cmd"),
+      environment.LOCALAPPDATA && win32.join(environment.LOCALAPPDATA, "Microsoft", "WinGet", "Links", "claude.exe")
+    ]),
+    codex: compact([
+      environment.APPDATA && win32.join(environment.APPDATA, "npm", "codex.cmd"),
+      environment.LOCALAPPDATA && win32.join(environment.LOCALAPPDATA, "Microsoft", "WinGet", "Links", "codex.exe")
+    ])
+  };
 }
 function executableCandidates(name, searchPath, fallbacks, runtime) {
   const path = runtime.platform === "win32" ? win32 : posix3;
@@ -10928,6 +10941,9 @@ function uniquePaths(paths, platform) {
     seen.add(key);
     return true;
   });
+}
+function compact(values) {
+  return values.filter((value) => value !== void 0);
 }
 
 // src/setup/process.ts

@@ -36,8 +36,21 @@ export function defaultExecutableFallbacks(
   if (runtime.platform === "darwin") {
     return { tailscale: ["/Applications/Tailscale.app/Contents/MacOS/Tailscale"] };
   }
-  if (runtime.platform !== "win32" || !environment.ProgramFiles) return {};
-  return { tailscale: [win32.join(environment.ProgramFiles, "Tailscale", "tailscale.exe")] };
+  if (runtime.platform !== "win32") return {};
+  return {
+    tailscale: compact([
+      environment.ProgramFiles && win32.join(environment.ProgramFiles, "Tailscale", "tailscale.exe")
+    ]),
+    claude: compact([
+      environment.USERPROFILE && win32.join(environment.USERPROFILE, ".local", "bin", "claude.exe"),
+      environment.APPDATA && win32.join(environment.APPDATA, "npm", "claude.cmd"),
+      environment.LOCALAPPDATA && win32.join(environment.LOCALAPPDATA, "Microsoft", "WinGet", "Links", "claude.exe")
+    ]),
+    codex: compact([
+      environment.APPDATA && win32.join(environment.APPDATA, "npm", "codex.cmd"),
+      environment.LOCALAPPDATA && win32.join(environment.LOCALAPPDATA, "Microsoft", "WinGet", "Links", "codex.exe")
+    ])
+  };
 }
 
 export function executableCandidates(
@@ -119,4 +132,8 @@ function uniquePaths(paths: string[], platform: NodeJS.Platform): string[] {
     seen.add(key);
     return true;
   });
+}
+
+function compact(values: readonly (string | undefined)[]): string[] {
+  return values.filter((value): value is string => value !== undefined);
 }
