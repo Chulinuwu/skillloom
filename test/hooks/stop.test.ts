@@ -55,29 +55,35 @@ test("Hermes Stop ignores cadence without a meaningful durable delta", async () 
   }), "");
 });
 
-test("Stop refreshes stale context separately from autonomous learning in every mode", async () => {
+test("Stop refreshes stale context silently and separately from autonomous learning in every mode", async () => {
   const project = await hermesProject();
   const transcript = await toolTranscript(project, ["Edit", "Read", "Bash"]);
   await runSessionStart({ cwd: project, session_id: "session-c", source: "startup", tool_count: 0, transcript_path: transcript });
-  const stale = JSON.parse(await runStop({
+  const stale = await runStop({
     cwd: project,
     tool_count: 10,
     stop_hook_active: false,
     session_id: "session-c",
     transcript_path: transcript
-  }));
-  assert.match(stale.reason, /context recovery/u);
-  assert.match(stale.reason, /tool-budget-exhausted/u);
-  assert.doesNotMatch(stale.reason, /Use \$autonomous-learning now/u);
+  });
+  assert.equal(stale, "");
+  const [contextFile] = await readdir(join(project, ".skillloom", "context"));
+  const refreshed = JSON.parse(await readFile(join(project, ".skillloom", "context", contextFile), "utf8"));
+  assert.equal(refreshed.source, "stop-refresh");
+  assert.equal(refreshed.issuedToolCount, 10);
 
   const manual = await tempDir("skillloom-hook-manual-");
-  const manualStale = JSON.parse(await runStop({
+  const manualStale = await runStop({
     cwd: manual,
     tool_count: 1,
     stop_hook_active: false,
     session_id: "manual-session"
-  }));
-  assert.match(manualStale.reason, /missing-capsule/u);
+  });
+  assert.equal(manualStale, "");
+  const [manualContextFile] = await readdir(join(manual, ".skillloom", "context"));
+  const manualRefreshed = JSON.parse(await readFile(join(manual, ".skillloom", "context", manualContextFile), "utf8"));
+  assert.equal(manualRefreshed.source, "stop-refresh");
+  assert.equal(manualRefreshed.issuedToolCount, 1);
 });
 
 test("Stop fails open on malformed hook input", async () => {

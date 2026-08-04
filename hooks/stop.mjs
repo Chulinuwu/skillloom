@@ -10,7 +10,7 @@ import {
 } from "./context-state.mjs";
 import { isMeaningfulLearningDelta } from "./context-policy.mjs";
 import { readHookInput } from "./input.mjs";
-import { contextRefreshReason, learningReviewReason } from "./messages.mjs";
+import { learningReviewReason } from "./messages.mjs";
 import { analyzeTranscript, countToolCalls } from "./transcript.mjs";
 
 const input = await readHookInput();
@@ -32,13 +32,12 @@ async function handleStop(input) {
     now: Date.now()
   });
   if (!health.fresh) {
-    const capsule = await issueContextCapsule(root, {
+    await issueContextCapsule(root, {
       sessionId,
       mode: config.mode,
       source: "stop-refresh",
       toolCount: counted
     });
-    block(contextRefreshReason(health, capsule, config.mode));
     return;
   }
   if (config.mode !== "hermes") return;
